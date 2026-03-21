@@ -11,6 +11,12 @@ The frame uses carbon fiber rods for the arms and landing gear, and 3D printed c
 
 Right now the hardware design is mostly done in CAD, and next step is printing + assembling + testing.
 
+<img width="1920" height="1080" alt="SUntitSSSDCFFFCCDDDCled1WSWW" src="https://github.com/user-attachments/assets/abb2c868-dd72-4a1b-86ca-1fb3d5f4d53e" />
+
+<img width="1920" height="1080" alt="Untitled1" src="https://github.com/user-attachments/assets/8857a475-d68a-40c8-a35f-43c3ea660768" />
+
+
+
 ---
 
 ## Components
