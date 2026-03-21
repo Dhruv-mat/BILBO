@@ -5,7 +5,7 @@ This is a custom drone I’ve been working on where I designed pretty much the e
 
 The idea was to build something that can actually handle onboard compute (Raspberry Pi + OAK-D Lite) and not just be a basic RC drone. So the focus right now has mostly been on getting the structure right before moving into autonomy.
 
-A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors — some of the earlier versions looked fine in CAD but would’ve probably failed instantly in real life.
+A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors, some of the earlier versions looked fine in CAD but would’ve probably not worked irl.
 
 The frame uses carbon fiber rods for the arms and landing gear, and 3D printed connectors to hold everything together. This makes it stronger than just printing the whole thing, and also easier to modify later.
 
@@ -16,7 +16,7 @@ Right now the hardware design is mostly done in CAD, and next step is printing +
 ## Components
 
 - Pixhawk 6C (flight controller)  
-- Raspberry Pi 4 / 5  
+- Raspberry Pi 4B  
 - OAK-D Lite (camera)  
 - 920KV brushless motors x4  
 - 20A / 30A ESCs x4  
