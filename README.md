@@ -103,19 +103,10 @@ It’s slightly angled forward so it gets a better view.
 
 ---
 
-## Current Status
+## Electronics Overview
 
-- Frame design mostly done  
-- Arm connectors working  
-- Motor mounts redesigned and fixed  
-- Landing gear added  
-- Electronics layout planned  
+Here is the full system schematic for the drone, including power distribution, flight controller connections, and companion computer setup.
 
-Still need to:
-- print everything  
-- assemble  
-- test stability  
-- integrate electronics  
 
 ---
 
