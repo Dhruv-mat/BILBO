@@ -106,6 +106,7 @@ It’s slightly angled forward so it gets a better view.
 ## Electronics Overview
 
 Here is the full system schematic for the drone, including power distribution, flight controller connections, and companion computer setup.
+<img width="2006" height="1405" alt="Screenshot 2026-03-22 002108" src="https://github.com/user-attachments/assets/0f68d68e-0572-465d-b386-e866240a8834" />
 
 
 ---
