@@ -1,6 +1,16 @@
-import depthai as dai
+
 import cv2
 import numpy as np
+
+import depthai as dai
+
+pipeline = dai.Pipeline()
+
+faceDet = pipeline.create(dai.node.MobileNetDetectionNetwork)
+
+faceDet.setConfidenceThreshold(0.5)
+
+faceDet.setBlobPath(dai.BlobPath("face-detection-retail-0004"))
 
 pipeline = dai.Pipeline()
 
