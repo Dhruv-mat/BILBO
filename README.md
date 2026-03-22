@@ -123,3 +123,29 @@ This took way more iteration than expected.
 A lot of designs had to be scrapped after realizing they wouldn’t actually work under load. The motor mount especially had to be redone after noticing alignment issues.
 Switching to carbon fiber rods instead of fully printed arms made a big difference. It’s way stronger and lighter.
 Still a lot left to do but the structure is finally in a place where I can start building it properly.
+
+
+## Bill of Materials (BOM)
+
+| Part | Quantity | Price (USD) |
+|------|--------|------------|
+| Propellers (Pair) | 2 | $2.02 |
+| RC Receiver | 1 | $45.78 |
+| Telemetry Kit | 1 | $77.11 |
+| GPS Module (u-blox) | 1 | $40.96 |
+| ESC (30A BLHeli) | 4 | $38.55 |
+| 920KV Brushless Motors | 4 | $31.18 |
+| Raspberry Pi 4 (8GB) | 1 | $144.58 |
+| Pixhawk 6C | 1 | $361.45 |
+| OAK-D Lite | 1 | $208.00 |
+| LiPo Battery 3S 5200mAh | 1 | $35.00 |
+| Power Distribution Board (PDB) | 1 | $5.00 |
+| Holybro PM02 Power Module | 1 | $27.00 |
+| Carbon Fiber Rod (25cm) | 1 | $22.00 |
+| Carbon Fiber Tube (Landing Legs) | 1 | $11.70 |
+| M3 Female Inserts | 20 | $1.00 |
+| M4 Female Inserts | 20 | $1.00 |
+| M3 Screw Set | 1 | $3.00 |
+| M4 Screw Set | 1 | $3.00 |
+
+**Total Estimated Cost: ~$1,058**
