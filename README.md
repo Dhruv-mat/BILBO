@@ -13,9 +13,8 @@ Right now the hardware design is mostly done in CAD, and next step is printing +
 
 <img width="1920" height="1080" alt="SUntitSSSDCFFFCCDDDCled1WSWW" src="https://github.com/user-attachments/assets/abb2c868-dd72-4a1b-86ca-1fb3d5f4d53e" />
 
-<img width="1920" height="1080" alt="Untitled1" src="https://github.com/user-attachments/assets/8857a475-d68a-40c8-a35f-43c3ea660768" />
 
-
+<img width="1920" height="1080" alt="dddfddffd" src="https://github.com/user-attachments/assets/fdeb6df4-3e1e-4913-aed7-5f48d3153d5e" />
 
 ---
 
@@ -78,7 +77,8 @@ Next is the motor side.
 Each arm ends in a motor mount. My first design didn’t work because the alignment was off and there wasn’t enough support, so I switched to a more reinforced design (kind of like a wishbone support).
 Attach the motors using standard screws and route the wires back toward the center.
 
-<img width="796" height="486" alt="Screenshot 2026-03-21 125147" src="https://github.com/user-attachments/assets/320cc947-a3f6-47f2-b35d-92194f3eae6e" />
+<img width="1178" height="919" alt="Screenshot 2026-04-05 235839" src="https://github.com/user-attachments/assets/89b1f8a1-6316-4333-8a43-4be4a7456f50" />
+
 
 
 ---
@@ -87,7 +87,8 @@ Now for the frame stack.
 Use M3 standoffs to mount the middle plate above the base. This is where the Pixhawk goes.
 Then add another set of standoffs and attach the top plate. The Raspberry Pi sits on top.
 
-<img width="646" height="625" alt="Unteeeeeitled" src="https://github.com/user-attachments/assets/cafabd28-c59d-42ff-86f9-7970957c8b96" />
+<img width="947" height="613" alt="Screenshot 2026-03-26 030339" src="https://github.com/user-attachments/assets/1ea828d9-3a98-455d-ab23-bbfe00178bef" />
+
 
 
 
@@ -104,8 +105,10 @@ It uses the same carbon rods with angled connectors. I didn’t want it to be co
 For the camera, mount the OAK-D Lite on the front using the custom holder.
 It’s slightly angled forward so it gets a better view.
 
+<img width="1317" height="910" alt="Screenshot 2026-03-29 021244" src="https://github.com/user-attachments/assets/0e7a7026-0717-4b69-a45a-4502a01bf34f" />
 
-<img width="803" height="618" alt="Screenshot 2026-03-21 130130" src="https://github.com/user-attachments/assets/fe6d7273-4839-4457-b3ef-70838d0d62eb" />
+<img width="1920" height="1080" alt="Untddditfffledd" src="https://github.com/user-attachments/assets/87cbf282-2f2b-4c3e-bf94-5ef8b9fcfab6" />
+
 
 ---
 
