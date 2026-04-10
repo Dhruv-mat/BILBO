@@ -21,7 +21,8 @@ https://youtu.be/Nrzs3dQ9exw?si=6kdqJGR1x-Q6_Brh
 <img width="1920" height="1080" alt="Untitledd" src="https://github.com/user-attachments/assets/bf2fa519-02d8-4d9d-a449-6fe57590ec33" />
 
 
-<img width="1920" height="1080" alt="dddfddffd" src="https://github.com/user-attachments/assets/fdeb6df4-3e1e-4913-aed7-5f48d3153d5e" />
+<img width="1920" height="1080" alt="Untddditfffledd" src="https://github.com/user-attachments/assets/24aa3063-ef2e-44b8-9600-d94d55ce5929" />
+
 
 ---
 
