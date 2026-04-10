@@ -3,13 +3,20 @@
 
 This is a custom drone I’ve been working on where I designed pretty much the entire frame from scratch instead of using a standard one.
 
-The idea was to build something that can actually handle onboard compute (Raspberry Pi + OAK-D Lite) and not just be a basic RC drone. So the focus right now has mostly been on getting the structure right before moving into autonomy.
+The idea was to build something that can actually handle onboard compute and not just be a basic RC drone. Initially I was planning to use a Raspberry Pi + OAK-D Lite for perception since it kind of does everything in one go, but that didn’t really work out because of availability and cost, so I had to change things a bit.
 
-A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors, some of the earlier versions looked fine in CAD but would’ve probably not worked irl.
+Right now the plan is to use a Jetson Nano with a normal RGB camera for detection and a TF-Luna LiDAR for distance. It’s definitely not as clean as the OAK-D setup, and I’m not 100% sure how well it’ll perform yet, but it should be good enough if I can get the software side working properly.
 
-The frame uses carbon fiber rods for the arms and landing gear, and 3D printed connectors to hold everything together. This makes it stronger than just printing the whole thing, and also easier to modify later.
+A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors, some of the earlier versions looked fine in CAD but realistically would’ve probably failed.
+
+The frame uses carbon fiber rods for the arms and landing gear, and 3D printed connectors to hold everything together. It’s way stronger than just printing everything, and also makes it easier to tweak later.
+
+Right now the hardware design is mostly done in CAD, next step is printing and actually seeing if it works the way I think it will.
 
 Right now the hardware design is mostly done in CAD, and next step is printing + assembling + testing.
+
+This new idea of the the RGB camera + a lidar sensor was inspired by this video:
+https://youtu.be/Nrzs3dQ9exw?si=6kdqJGR1x-Q6_Brh
 
 <img width="1920" height="1080" alt="SUntitSSSDCFFFCCDDDCled1WSWW" src="https://github.com/user-attachments/assets/abb2c868-dd72-4a1b-86ca-1fb3d5f4d53e" />
 
@@ -21,8 +28,9 @@ Right now the hardware design is mostly done in CAD, and next step is printing +
 ## Components
 
 - Pixhawk 6C (flight controller)  
-- Raspberry Pi 4B  
-- OAK-D Lite (camera)  
+- Nvidia Jetsone Nano 2GB
+- RPI CAM V2
+- TF Luna
 - 920KV brushless motors x4  
 - 20A / 30A ESCs x4  
 - Carbon fiber rods (1.4 cm diameter)  
@@ -102,8 +110,8 @@ It uses the same carbon rods with angled connectors. I didn’t want it to be co
 
 ---
 
-For the camera, mount the OAK-D Lite on the front using the custom holder.
-It’s slightly angled forward so it gets a better view.
+For perception, mount the RGB camera on the front using a custom holder, slightly angled forward.
+The TF-Luna LiDAR is mounted alongside it to provide distance measurements.
 
 <img width="1317" height="910" alt="Screenshot 2026-03-29 021244" src="https://github.com/user-attachments/assets/0e7a7026-0717-4b69-a45a-4502a01bf34f" />
 
@@ -120,6 +128,17 @@ Here is the full system schematic for the drone, including power distribution, f
 
 ---
 
+## Frame Stress Testing
+
+Also I ran an a basic static stress test on the frame to get a rough idea of how it behaves under load. applied upward forces at the motor mounts to simulate thrust and checked deformation and stress distribution across the arms and connectors. Most of the stress seems to concentrate near the joints and motor mounts which i kinda expected, but nothing looks completely crazy or like it’ll instantly fail. deformation is pretty small overall, so structurally it seems fine for now, although this is still a simplified test and real-world vibrations and impacts aren’t accounted for yet.
+
+![WhatsApp Image 2026-04-07 at 09 31 21](https://github.com/user-attachments/assets/e2ea1788-4ed3-47c8-bc7b-ec8591b2cea4)
+
+![WhatsApp Image 2026-04-07 at 09 31 22](https://github.com/user-attachments/assets/9a3d937e-9e1d-48d8-8684-7a00127cb9e6)
+
+
+
+---
 ## Notes
 
 This took way more iteration than expected.
