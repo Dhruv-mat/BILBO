@@ -18,7 +18,7 @@ Right now the hardware design is mostly done in CAD, and next step is printing +
 This new idea of the the RGB camera + a lidar sensor was inspired by this video:
 https://youtu.be/Nrzs3dQ9exw?si=6kdqJGR1x-Q6_Brh
 
-<img width="1920" height="1080" alt="SUntitSSSDCFFFCCDDDCled1WSWW" src="https://github.com/user-attachments/assets/abb2c868-dd72-4a1b-86ca-1fb3d5f4d53e" />
+<img width="1920" height="1080" alt="Untitledd" src="https://github.com/user-attachments/assets/bf2fa519-02d8-4d9d-a449-6fe57590ec33" />
 
 
 <img width="1920" height="1080" alt="dddfddffd" src="https://github.com/user-attachments/assets/fdeb6df4-3e1e-4913-aed7-5f48d3153d5e" />
