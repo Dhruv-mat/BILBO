@@ -13,7 +13,7 @@ while True:
     results = model(frame)
 
     for *box, conf, cls in results.xyxy[0]:
-        if int(cls) == 0:  # person class
+        if int(cls) == 0: 
             x1, y1, x2, y2 = map(int, box)
 
             cx = int((x1 + x2) / 2)
