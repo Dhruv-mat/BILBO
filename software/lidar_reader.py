@@ -49,7 +49,7 @@ def main():
     parser.add_argument("--port", default="/dev/ttyTHS1", help="TF Luna Serial port")
     parser.add_argument("--baud", type=int, default=115200, help="TF Luna Baud Rate")
     parser.add_argument("--repeat", type=int, default=10, help="No. of Readings")
-    parser.add_argument("--DELAY", type=float, default=0.1, help="Seconds btw readings")
+    parser.add_argument("--delay", type=float, default=0.1, help="Seconds btw readings")
     args = parser.parse_args()
 
     serial_port = connect_to_lidar(args.port,args.baud)
