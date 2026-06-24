@@ -5,7 +5,7 @@ Telemetry Kit,1,77,yes
 GPS module,1,40,yes
 ESC (30A BHeli),1,38,yes
 920Kv motor,4,31,no
-Coral TPU,1,100,no
+RPI AI HAT,1,100,no
 Rpi cam V2,1,18,no
 TF Luna,1,22,no
 Pixhawk 6c,1,360,yes
