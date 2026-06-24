@@ -5,7 +5,7 @@ This is a custom drone I’ve been working on where I designed pretty much the e
 
 The idea was to build something that can actually handle onboard compute and not just be a basic RC drone. Initially I was planning to use a Raspberry Pi + OAK-D Lite for perception since it kind of does everything in one go, but that didn’t really work out because of availability and cost, so I had to change things a bit.
 
-Right now the plan is to use a Jetson Nano with a normal RGB camera for detection and a TF-Luna LiDAR for distance. It’s definitely not as clean as the OAK-D setup, and I’m not 100% sure how well it’ll perform yet, but it should be good enough if I can get the software side working properly.
+Right now the plan is to use a RPI + Coral TPU with a normal RGB camera for detection and a TF-Luna LiDAR for distance. It’s definitely not as clean as the OAK-D setup, and I’m not 100% sure how well it’ll perform yet, but it should be good enough if I can get the software side working properly.
 
 A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors, some of the earlier versions looked fine in CAD but realistically would’ve probably failed.
 
@@ -158,7 +158,7 @@ Still a lot left to do but the structure is finally in a place where I can start
 | GPS Module (u-blox) | 1 | $40 |
 | ESC (30A BLHeli) | 4 | $38.55 |
 | 920KV Brushless Motors | 4 | $31 |
-| Jetson nano 2GB | 1 | $60 |
+| Coral TPU | 1 | $100 |
 | Pixhawk 6C | 1 | $360 |
 | Rpi Cam V2 | 1 | $18 |
 | TF Luna | 1 | $22 |
