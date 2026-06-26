@@ -153,12 +153,13 @@ Still a lot left to do but the structure is finally in a place where I can start
 | Part | Quantity | Price (USD) |
 |------|--------|------------|
 | Propellers (Pair) | 2 | $2.02 |
+|3d prinintg | 1| 35$
 | RC Receiver | 1 | $45.78 |
 | Telemetry Kit | 1 | $77.11 |
 | GPS Module (u-blox) | 1 | $40 |
 | ESC (30A BLHeli) | 4 | $38.55 |
 | 920KV Brushless Motors | 4 | $31 |
-| RPI AI HAT 26TOPS | 1 | $100 |
+| RPI AI HAT 13TOPS | 1 | $70 |
 | Pixhawk 6C | 1 | $360 |
 | Rpi Cam V2 | 1 | $18 |
 | TF Luna | 1 | $22 |
