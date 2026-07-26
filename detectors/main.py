@@ -18,4 +18,4 @@ while True:
         continue
 
     if tracker.is_locked(target,cam_x_cent , cam_y_cent):
-        distance = lidar.get_distance()
+        distance = lidar.read_data()
