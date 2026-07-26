@@ -9,7 +9,7 @@ from libcamera import Transform
 
 # COCO class index for "person". Everything else (laptop=63, etc.) is ignored.
 PERSON_CLASS = 0
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.5
 
 last_persons = []
 transform=Transform(rotation=180)
