@@ -115,6 +115,7 @@ def intitalise():
 
     picam2 = Picamera2(imx500.camera_num)
     config = picam2.create_preview_configuration(
+        transform=Transform(hflip=True, vflip=True),
         controls={"FrameRate": intrinsics.inference_rate},
         buffer_count=12,
     )
