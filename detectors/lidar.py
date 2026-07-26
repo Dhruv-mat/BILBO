@@ -4,17 +4,16 @@ import serial
 ser = serial.Serial("/dev/ttyAMA0", 115200)
 
 def read_data():
-    while True:
-        counter = ser.in_waiting # count the number of bytes of the serial port
-        if counter > 8:
-            bytes_serial = ser.read(9)
-            ser.reset_input_buffer()
+    counter = ser.in_waiting # count the number of bytes of the serial port
+    if counter > 8:
+        bytes_serial = ser.read(9)
+        ser.reset_input_buffer()
 
-            if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59: # this portion is for python3
-                distance = bytes_serial[2] + bytes_serial[3]*256 # multiplied by 256, because the binary data is shifted by 8 to the left (equivalent to "<< 8").                                              # Dist_L, could simply be added resulting in 16-bit data of Dist_Total.
-                print("Distance:"+ str(distance))
-                time.sleep(1)
-                ser.reset_input_buffer()
+        if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59: # this portion is for python3
+            distance = bytes_serial[2] + bytes_serial[3]*256 # multiplied by 256, because the binary data is shifted by 8 to the left (equivalent to "<< 8").                                              # Dist_L, could simply be added resulting in 16-bit data of Dist_Total.
+            print("Distance:"+ str(distance))
+            time.sleep(1)
+            ser.reset_input_buffer()
 
 if __name__ == "__main__":
     try:
