@@ -1,6 +1,6 @@
 
 
-def is_loceked(person,cam_x_cent , cam_y_cent):
+def is_locked(person,cam_x_cent , cam_y_cent):
 
     left = person.x
     right = person.x + person.width
