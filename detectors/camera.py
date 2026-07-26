@@ -124,11 +124,9 @@ def intitalise():
 
     picam2.pre_callback = draw_people
     frame_width, frame_height = config["main"]["size"]
-
     return frame_width, frame_height
 
 def get_people():
-    centers = [(p.center_x, p.center_y) for p in persons]
     persons = parse_people(picam2.capture_metadata())
     return persons
     # Coordinates of each person's center, one tuple per person this frame.
