@@ -4,16 +4,13 @@ import tracker
 
 cam_x_cent , cam_y_cent = camera.initialize()
 
-
-
-
 while True:
     persons = camera.get_people()
 
-    target = tracker.select(persons)
+    # target = tracker.select(persons)
 
-    if target is None:
-        continue
+    # if target is None:
+    #     continue
 
-    if tracker.is_locked(target,cam_x_cent , cam_y_cent):
-        distance = lidar.read_data()
+    # if tracker.is_locked(target,cam_x_cent , cam_y_cent):
+    #     distance = lidar.read_data()

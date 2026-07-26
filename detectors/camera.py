@@ -1,6 +1,4 @@
 import argparse
-import time 
-import serial
 
 import cv2
 
@@ -8,10 +6,9 @@ from picamera2 import MappedArray, Picamera2
 from picamera2.devices import IMX500
 from picamera2.devices.imx500 import NetworkIntrinsics
 
-# COCO class index for "person".
+# COCO class index for "person". Everything else (laptop=63, etc.) is ignored.
+PERSON_CLASS = 0
 CONF_THRESHOLD = 0.3
-
-ser = serial.Serial("/dev/serial0", 115200)
 
 last_persons = []
 
@@ -23,12 +20,9 @@ class Person:
         self.width = width
         self.height = height
         self.confidence = confidence
-        self.area = width *height
-        self.center_x = x + width/2
-        self.center_y = y + height/2
-
-def get_lidar():
-    
+        self.area = width * height
+        self.center_x = x + width / 2
+        self.center_y = y + height / 2
 
 
 def get_args():
@@ -76,7 +70,7 @@ def parse_people(metadata):
 
 
 def draw_people(request):
-    """Runs in the camera draws whatever the last parse produced."""
+    """Runs in the camera thread; draws whatever the last parse produced."""
     if not last_persons:
         return
 
@@ -107,7 +101,7 @@ def draw_people(request):
             )
 
 
-def main():
+def intitalise():
     global imx500, intrinsics, picam2
 
     args = get_args()
@@ -129,11 +123,15 @@ def main():
     picam2.start(config, show_preview=True)
 
     picam2.pre_callback = draw_people
+    frame_width, frame_height = config["main"]["size"]
 
-    
-    persons = parse_people(picam2.capture_metadata())
+    return frame_width, frame_height
+
+def get_people():
     centers = [(p.center_x, p.center_y) for p in persons]
+    persons = parse_people(picam2.capture_metadata())
     return persons
+    # Coordinates of each person's center, one tuple per person this frame.
+    # e.g. feed `centers` to your tracker / logger:
+    # print(centers)
 
-
-)
