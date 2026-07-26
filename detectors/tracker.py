@@ -13,8 +13,10 @@ def is_locked(person,cam_x_cent , cam_y_cent):
             and
         top <= cam_y_cent <= bottom
     ):
+        print("centered")
         return True
     else:
+        print("not centered")
         return False
 
 def select(persons):
