@@ -1,7 +1,7 @@
 import lidar
 import camera
 import tracker
-
+print("hi")
 cam_x_cent , cam_y_cent = camera.intitalise()
 
 while True:

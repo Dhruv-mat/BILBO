@@ -1,15 +1,8 @@
 import time
 import serial
-# written by Ibrahim for Public use
-
-# Checked with TFmini plus
-
-# ser = serial.Serial("/dev/ttyUSB1", 115200)
 
 ser = serial.Serial("/dev/ttyAMA0", 115200)
-# ser = serial.Serial("COM12", 115200)
 
-# we define a new function that will get the data from LiDAR and publish it
 def read_data():
     while True:
         counter = ser.in_waiting # count the number of bytes of the serial port
