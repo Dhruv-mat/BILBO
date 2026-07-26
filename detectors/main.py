@@ -20,6 +20,6 @@ while True:
 
     t2 = time.perf_counter()
 
-    print(f"Camera: {(t1-t0)*1000:.1f} ms")
+    # print(f"Camera: {(t1-t0)*1000:.1f} ms")
 
-    print(f"LiDAR : {(t2-t1)*1000:.1f} ms")
+    # print(f"LiDAR : {(t2-t1)*1000:.1f} ms")
