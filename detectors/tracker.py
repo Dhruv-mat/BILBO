@@ -9,9 +9,9 @@ def is_locked(person,cam_x_cent , cam_y_cent):
     bottom = person.y + person.height
         
     if (
-        left <= cam_x_cent <= right
+        left <= cam_x_cent//2 <= right
             and
-        top <= cam_y_cent <= bottom
+        top <= cam_y_cent//2 <= bottom
     ):
         print("centered")
         return True
