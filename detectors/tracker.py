@@ -1,7 +1,7 @@
 
 
 def is_locked(person,cam_x_cent , cam_y_cent):
-
+    print("is_locked working")
     left = person.x
     right = person.x + person.width
 
@@ -18,8 +18,8 @@ def is_locked(person,cam_x_cent , cam_y_cent):
         return False
 
 def select(persons):
-
+    print("select working")
     if not persons:
         return None
 
-    return max(persons, key=lambda p: p.area)
+    return max(persons, key=lambda p: p.area)ß
