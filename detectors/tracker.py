@@ -22,4 +22,4 @@ def select(persons):
     if not persons:
         return None
 
-    return max(persons, key=lambda p: p.area)ß
+    return max(persons, key=lambda p: p.area)
