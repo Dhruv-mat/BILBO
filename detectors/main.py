@@ -5,8 +5,6 @@ import tracker
 cam_x_cent , cam_y_cent = camera.initialize()
 
 
-lidar.initialize()
-
 
 
 while True:
