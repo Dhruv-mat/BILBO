@@ -1,5 +1,11 @@
 import time
 import serial
+import math
+
+BASELINE = 0.05        
+CAMERA_FOV = 78          
+IMAGE_WIDTH = 640        
+PPD = IMAGE_WIDTH / CAMERA_FOV
 
 ser = serial.Serial("/dev/ttyAMA0", 115200)
 
@@ -9,10 +15,19 @@ def read_data():
         bytes_serial = ser.read(9)
         ser.reset_input_buffer()
 
-        if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59: # this portion is for python3
-            distance = bytes_serial[2] + bytes_serial[3]*256 # multiplied by 256, because the binary data is shifted by 8 to the left (equivalent to "<< 8").                                              # Dist_L, could simply be added resulting in 16-bit data of Dist_Total.
-            print("Distance:"+ str(distance))
+        if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59:
+            distance = bytes_serial[2] + bytes_serial[3]*256 
             ser.reset_input_buffer()
+
+
+def parallax_angle(distance):
+    angle = math.degrees(math.atan(BASELINE / distance))
+
+    pixel_offset = angle * PPD
+
+    return IMAGE_WIDTH // 2 + pixel_offset
+
+
 
 if __name__ == "__main__":
     try:

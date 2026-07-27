@@ -1,4 +1,14 @@
+import math
 
+BASELINE = 0.05
+CAMERAFOV = 78 #this is in degress fyi
+IMAGEWIDTH = 640
+ppd = IMAGEWIDTH/CAMERAFOV
+
+
+
+def correction(distance):
+    angle = math.degrees(math.atan(BASELINE/distance))
 
 def is_locked(person,cam_x_cent , cam_y_cent):
     print("is_locked working")
