@@ -18,8 +18,9 @@ while True:
     if tracker.is_locked(target,cam_x_cent , cam_y_cent):
         distance = lidar.read_data()
         print("Distance:"+ str(distance))
-        dist = lidar.parallax_angle(distance)
-        print("Distance:"+ str(dist))
+        if distance is not None:
+            dist = lidar.parallax_angle(distance)
+            print("Distance:"+ str(dist))
 
     t2 = time.perf_counter()
 
