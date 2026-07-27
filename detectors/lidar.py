@@ -18,6 +18,7 @@ def read_data():
         if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59:
             distance = bytes_serial[2] + bytes_serial[3]*256 
             ser.reset_input_buffer()
+            return distance
 
 
 def parallax_angle(distance):
