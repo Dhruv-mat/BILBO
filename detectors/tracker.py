@@ -10,7 +10,7 @@ def get_lock_center(distance):
 
     pixel_offset = angle * PPD
 
-    return IMAGE_WIDTH // 2 + pixel_offset
+    return IMAGEWIDTH // 2 + pixel_offset
 
 
 def is_locked(person,lock_center):
