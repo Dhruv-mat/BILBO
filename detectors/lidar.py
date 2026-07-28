@@ -2,10 +2,7 @@ import time
 import serial
 import math
 
-BASELINE = 0.05        
-CAMERA_FOV = 78          
-IMAGE_WIDTH = 640        
-PPD = IMAGE_WIDTH / CAMERA_FOV
+
 
 ser = serial.Serial("/dev/ttyAMA0", 115200)
 
@@ -21,12 +18,7 @@ def read_data():
             return distance
 
 
-def parallax_angle(distance):
-    angle = math.degrees(math.atan(BASELINE / distance))
 
-    pixel_offset = angle * PPD
-
-    return IMAGE_WIDTH // 2 + pixel_offset
 
 
 

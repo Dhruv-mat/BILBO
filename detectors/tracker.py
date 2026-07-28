@@ -3,14 +3,17 @@ import math
 BASELINE = 0.05
 CAMERAFOV = 78 #this is in degress fyi
 IMAGEWIDTH = 640
-ppd = IMAGEWIDTH/CAMERAFOV
+PPD = IMAGEWIDTH/CAMERAFOV
+
+def get_lock_center(distance):
+    angle = math.degrees(math.atan(BASELINE / distance))
+
+    pixel_offset = angle * PPD
+
+    return IMAGE_WIDTH // 2 + pixel_offset
 
 
-
-def correction(distance):
-    angle = math.degrees(math.atan(BASELINE/distance))
-
-def is_locked(person,cam_x_cent , cam_y_cent):
+def is_locked(person,lock_center):
     print("is_locked working")
     left = person.x
     right = person.x + person.width
@@ -19,11 +22,8 @@ def is_locked(person,cam_x_cent , cam_y_cent):
     bottom = person.y + person.height
         
     if (
-        left <= cam_x_cent//2 <= right
-            and
-        top <= cam_y_cent//2 <= bottom
-    ):
-        print("centered")
+        left <= lock_center <= right
+        ):
         return True
     else:
         # print(f"Camera center : ({cam_x_cent}, {cam_y_cent})")
