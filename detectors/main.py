@@ -23,6 +23,7 @@ while True:
     else:
         # Predict where the LiDAR beam should appear
         lock_center = tracker.get_lock_center(last_good_distance)
+        print("center",lock_center)
 
     locked = tracker.is_locked(target, lock_center)
 
@@ -30,6 +31,7 @@ while True:
         new_distance = lidar.read_data()
         if new_distance is not None:
             last_good_distance = new_distance
+            print(new_distance)
     t2 = time.perf_counter()
 
     # print(f"Camera: {(t1-t0)*1000:.1f} ms")
