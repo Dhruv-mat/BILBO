@@ -7,7 +7,7 @@ def yaw_left():
 def hover():
     print('holding position')
 
-def backwards():
+def backward():
     print("going backwards")
 
 def forward():
