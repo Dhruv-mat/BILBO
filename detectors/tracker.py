@@ -45,6 +45,7 @@ def is_locked(person, camera_center_x):
         return False, 0
 
     error_x = person.center_x - camera_center_x
+    print ("tracker",error_x)
     print(
 
     f"person_center={person.center_x}, "

@@ -2,7 +2,7 @@ DEADBAND = 5
 import drone
 
 def update(error_x, last_good_distance):
-    print(f"Error: {error_x}")
+    print(f"controller: {error_x}")
     if abs(error_x) <= DEADBAND:
         # drone.hover()
         print ("hover")
