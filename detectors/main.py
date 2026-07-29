@@ -22,10 +22,9 @@ while True:
 
     
     if last_good_distance is None:
-        lock_center = CAMERA_CENTER
+        lock_center = cam_x_cent // 2
 
     else:
-        # Predict where the LiDAR beam should appear
         lock_center = tracker.get_lock_center(last_good_distance)
         print("center",lock_center)
 
