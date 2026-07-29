@@ -26,7 +26,6 @@ while True:
 
     else:
         lock_center = tracker.get_lock_center(last_good_distance)
-        print("center",lock_center)
 
     locked, error_x = tracker.is_locked(target, lock_center)
 
