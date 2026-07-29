@@ -39,8 +39,13 @@ def get_lock_center(distance):
 #         return False
 
 def is_locked(person, camera_center_x):
+    
+    if camera_center_x is None:
+
+        return False, 0
 
     error_x = person.center_x - camera_center_x
+    
 
 
     locked = (
