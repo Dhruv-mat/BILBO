@@ -12,11 +12,15 @@ while True:
     t0 = time.perf_counter()
 
     persons = camera.get_people()
+    print(f"Detected {len(persons)} people")
     t1 = time.perf_counter()
     target = tracker.select(persons)
+    
+    print(f"Target: {target}")
 
     if target is None:
         # controller.hover()
+        print("No target selected")
         continue
 
     
@@ -27,6 +31,7 @@ while True:
         lock_center = tracker.get_lock_center(last_good_distance)
 
     locked, error_x = tracker.is_locked(target, lock_center)
+
     print("main",error_x)
 
     if abs(error_x) < 15:
