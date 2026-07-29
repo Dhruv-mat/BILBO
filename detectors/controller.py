@@ -1,16 +1,30 @@
 DEADBAND = 50
+MIN_DISTANCE = 65  # centimeters
+MAX_DISTANCE = 70  
 import drone
 
-def update(error_x, last_good_distance):
-    if abs(error_x) <= DEADBAND:
-        # drone.hover()
-        print ("hover")
-        print(last_good_distance)
+def update(error_x, distance):
 
-    elif error_x > DEADBAND:
-        # drone.yaw_right()
-        print("right")
+    if abs(error_x) > DEADBAND:
+
+        if error_x > 0:
+            drone.yaw_right()
+        else:
+            drone.yaw_left()
+
+        return
+
+    # Yaw is aligned from here on
+
+    if distance is None:
+        drone.hover()
+        return
+
+    if distance < MIN_DISTANCE:
+        drone.backward()
+
+    elif distance > MAX_DISTANCE:
+        drone.forward()
 
     else:
-        # drone.yaw_left()
-        print("left")
+        drone.hover()
