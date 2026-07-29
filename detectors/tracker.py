@@ -7,12 +7,13 @@ PPD = IMAGE_WIDTH/CAMERAFOV
 LOCK_THRESHOLD = 15
 
 def get_lock_center(distance):
-    angle = math.degrees(math.atan(BASELINE / distance))
-
-    pixel_offset = angle * PPD
     if distance is None or distance <= 0:
+        return IMAGE_WIDTH // 2
 
-        return IMAGE_WIDTH // 2 + pixel_offset
+    angle = math.degrees(math.atan(BASELINE / distance))
+    pixel_offset = angle * PPD
+
+    return IMAGE_WIDTH // 2 + pixel_offset
 
 
 # def is_locked(person,lock_center):
