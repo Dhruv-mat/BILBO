@@ -15,14 +15,13 @@ while True:
     t1 = time.perf_counter()
     target = tracker.select(persons)
 
-    error = target.center_x - cam_x_cent
-
     if target is None:
+        # controller.hover()
         continue
 
     
     if last_good_distance is None:
-        lock_center = cam_x_cent // 2
+        lock_center = CAMERA_CENTER
 
     else:
         lock_center = tracker.get_lock_center(last_good_distance)
