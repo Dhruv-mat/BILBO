@@ -2,9 +2,9 @@ import math
 
 BASELINE = 0.05
 CAMERAFOV = 78 #this is in degress fyi
-IMAGEWIDTH = 640
-PPD = IMAGEWIDTH/CAMERAFOV
-LOCKED_THERSHOLD = 15
+IMAGE_WIDTH = 640
+PPD = IMAGE_WIDTH/CAMERAFOV
+LOCK_THRESHOLD = 15
 
 def get_lock_center(distance):
     angle = math.degrees(math.atan(BASELINE / distance))
