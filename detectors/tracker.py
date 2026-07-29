@@ -71,7 +71,5 @@ def is_locked(person, camera_center_x):
 def select(persons):
     if not persons:
         return None
-    else:
-        return persons
 
     return max(persons, key=lambda p: p.area)
