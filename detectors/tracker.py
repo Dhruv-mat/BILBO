@@ -46,7 +46,7 @@ def is_locked(person, camera_center_x):
 
     print(person.center_x)
     error_x = person.center_x - camera_center_x
-    print ("tracker",error_x)
+
     print(
 
     f"person_center={person.center_x}, "
@@ -71,5 +71,7 @@ def is_locked(person, camera_center_x):
 def select(persons):
     if not persons:
         return None
+    else:
+        return persons
 
     return max(persons, key=lambda p: p.area)
