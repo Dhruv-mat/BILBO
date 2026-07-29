@@ -1,4 +1,4 @@
-DEADBAND = 20
+DEADBAND = 30
 import drone
 
 def update(error_x, last_good_distance):
