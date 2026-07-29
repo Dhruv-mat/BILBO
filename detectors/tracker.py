@@ -48,24 +48,8 @@ def is_locked(person, camera_center_x):
     print(person.center_x)
     error_x = person.center_x - camera_center_x
 
-    print(
 
-    f"person_center={person.center_x}, "
-
-    f"camera_center={camera_center_x}, "
-
-    f"error={error_x}"
-
-)
-    
-
-
-    locked = (
-
-        abs(error_x) < LOCK_THRESHOLD
-
-
-    )
+    locked = (  abs(error_x) < LOCK_THRESHOLD )
 
     return locked, error_x
 

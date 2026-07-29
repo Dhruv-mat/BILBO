@@ -12,11 +12,11 @@ while True:
     t0 = time.perf_counter()
 
     persons = camera.get_people()
-    print(f"Detected {len(persons)} people")
+
     t1 = time.perf_counter()
     target = tracker.select(persons)
     
-    print(f"Target: {target}")
+
 
     if target is None:
         # controller.hover()
