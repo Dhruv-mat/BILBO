@@ -32,7 +32,6 @@ while True:
 
     locked, error_x = tracker.is_locked(target, lock_center)
 
-    print("main",error_x)
 
     if abs(error_x) < 15:
 
@@ -41,7 +40,7 @@ while True:
         if new_distance is not None:
 
             last_good_distance = new_distance
-            
+
 
     controller.update(error_x, last_good_distance)
 
