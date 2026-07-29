@@ -41,6 +41,7 @@ while True:
         if new_distance is not None:
 
             last_good_distance = new_distance
+            
 
     controller.update(error_x, last_good_distance)
 
