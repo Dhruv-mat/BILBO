@@ -2,6 +2,8 @@ import lidar
 import camera
 import tracker
 import time
+import controller
+
 print("hi")
 cam_x_cent , cam_y_cent = camera.intitalise()
 last_good_distance = None
@@ -12,6 +14,8 @@ while True:
     persons = camera.get_people()
     t1 = time.perf_counter()
     target = tracker.select(persons)
+
+    error = target.center_x - cam_x_cent
 
     if target is None:
         continue
@@ -25,14 +29,17 @@ while True:
         lock_center = tracker.get_lock_center(last_good_distance)
         print("center",lock_center)
 
-    locked = tracker.is_locked(target, lock_center)
+    error_x = tracker.is_locked(target, lock_center)
 
-    if locked:
+    if abs(error_x) < 15:
+
         new_distance = lidar.read_data()
+
         if new_distance is not None:
+
             last_good_distance = new_distance
-            print(new_distance)
-    t2 = time.perf_counter()
+
+    controller.update(error_x, last_good_distance)
 
     # print(f"Camera: {(t1-t0)*1000:.1f} ms")
 

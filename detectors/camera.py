@@ -129,6 +129,7 @@ def intitalise():
     return frame_width, frame_height
 
 def get_people():
+    
     persons = parse_people(picam2.capture_metadata())
     return persons
     # Coordinates of each person's center, one tuple per person this frame.
