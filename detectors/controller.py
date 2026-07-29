@@ -1,6 +1,6 @@
 DEADBAND = 50
-MIN_DISTANCE = 160  # centimeters
-MAX_DISTANCE = 175 
+MIN_DISTANCE = 155  # centimeters
+MAX_DISTANCE = 180 
 import drone
 
 def update(error_x, distance):
