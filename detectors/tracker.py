@@ -39,7 +39,7 @@ def get_lock_center(distance):
 #         return False
 
 def is_locked(person, camera_center_x):
-    
+
     if camera_center_x is None:
 
         return False, 0
@@ -58,7 +58,6 @@ def is_locked(person, camera_center_x):
     return locked, error_x
 
 def select(persons):
-    print("select working")
     if not persons:
         return None
 
