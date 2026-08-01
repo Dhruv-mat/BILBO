@@ -39,9 +39,15 @@ def update(error_x, distance):
     print(f"Distance: {distance}")
 
     if distance is None:
+
+        pid_output = 0
+
         forward_velocity = 0
+
     else:
+
         pid_output = distance_pid(distance)
+
         forward_velocity = -pid_output
 
 
