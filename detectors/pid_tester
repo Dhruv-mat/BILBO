@@ -1,6 +1,9 @@
 from simple_pid import PID
+import time
 
 pid = PID(0.02, 0, 0, setpoint=160)
+pid.output_limits = (-2, 2)
 
 for d in [60, 100, 160, 200, 300]:
     print(d, pid(d))
+    time.sleep(0.05)
