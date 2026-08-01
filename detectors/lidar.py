@@ -7,15 +7,13 @@ import math
 ser = serial.Serial("/dev/ttyAMA0", 115200)
 
 def read_data():
-    counter = ser.in_waiting # count the number of bytes of the serial port
-    if counter > 8:
-        bytes_serial = ser.read(9)
-        ser.reset_input_buffer()
+    if ser.in_waiting >= 9:
+        packet = ser.read(9)
 
-        if bytes_serial[0] == 0x59 and bytes_serial[1] == 0x59:
-            distance = bytes_serial[2] + bytes_serial[3]*256 
-            ser.reset_input_buffer()
-            return distance
+        if packet[0] == 0x59 and packet[1] == 0x59:
+            return packet[2] + (packet[3] << 8)
+
+    return None
 
 
 
