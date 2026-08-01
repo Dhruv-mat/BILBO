@@ -25,6 +25,8 @@ yaw_pid.output_limits = (-MAX_YAW_RATE, MAX_YAW_RATE)
 
 distance_pid.output_limits = (-MAX_FORWARD_SPEED, MAX_FORWARD_SPEED)
 
+
+
 def update(error_x, distance):
 
     if abs(error_x) < YAW_DEADBAND:
@@ -33,12 +35,14 @@ def update(error_x, distance):
         yaw_rate = yaw_pid(error_x)
 
     print(f"Distance: {distance}")
-    
+
     if distance is None:
-        forward_speed = 0
+        forward_velocity = 0
     else:
-        forward_speed = -distance_pid(distance)
+        pid_output = distance_pid(distance)
+        forward_velocity = -pid_output
+
     drone.move(
         yaw_rate=yaw_rate,
-        forward_speed=forward_speed
+        forward_speed=forward_velocity
     )
