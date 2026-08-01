@@ -1,0 +1,6 @@
+from simple_pid import PID
+
+pid = PID(0.02, 0, 0, setpoint=160)
+
+for d in [60, 100, 160, 200, 300]:
+    print(d, pid(d))
