@@ -1,30 +1,42 @@
-DEADBAND = 50
-MIN_DISTANCE = 155  # centimeters
-MAX_DISTANCE = 180 
 import drone
+from simple_pid import PID
+
+MAX_YAW_RATE =20
+YAW_DEADBAND = 50
+TARGET_DISTANCE = 160  
+MAX_YAW_RATE = 15    
+MAX_FORWARD_SPEED = 2
+
+yaw_pid = PID(
+    Kp=0.10,
+    Ki=0.00,
+    Kd=0.00,
+    setpoint=0
+)
+
+distance_pid = PID(
+    Kp=0.05,
+    Ki=0.00,
+    Kd=0.00,
+    setpoint=TARGET_DISTANCE
+)
+
+yaw_pid.output_limits = (-MAX_YAW_RATE, MAX_YAW_RATE)
+
+distance_pid.output_limits = (-MAX_FORWARD_SPEED, MAX_FORWARD_SPEED)
 
 def update(error_x, distance):
 
-    if abs(error_x) > DEADBAND:
-
-        if error_x > 0:
-            drone.yaw_right()
-        else:
-            drone.yaw_left()
-
-        return
-
-    # Yaw is aligned from here on
+    if abs(error_x) < YAW_DEADBAND:
+        yaw_rate = 0
+    else:
+        yaw_rate = yaw_pid(error_x)
 
     if distance is None:
-        drone.hover()
-        return
-
-    if distance < MIN_DISTANCE:
-        drone.backward()
-
-    elif distance > MAX_DISTANCE:
-        drone.forward()
-
+        forward_speed = 0
     else:
-        drone.hover()
+        forward_speed = distance_pid(distance)
+        drone.move(
+        yaw_rate=yaw_rate,
+        forward_speed=forward_speed
+    )
