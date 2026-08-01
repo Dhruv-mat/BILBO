@@ -25,6 +25,8 @@ yaw_pid.output_limits = (-MAX_YAW_RATE, MAX_YAW_RATE)
 
 distance_pid.output_limits = (-MAX_FORWARD_SPEED, MAX_FORWARD_SPEED)
 
+import time
+
 
 
 def update(error_x, distance):
@@ -46,3 +48,6 @@ def update(error_x, distance):
         yaw_rate=yaw_rate,
         forward_speed=forward_velocity
     )
+    print(time.monotonic())
+    print(distance)
+    print(distance_pid(distance))
