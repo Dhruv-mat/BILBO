@@ -15,7 +15,7 @@ yaw_pid = PID(
 )
 
 distance_pid = PID(
-    Kp=0.05,
+    Kp=0.02,
     Ki=0.00,
     Kd=0.00,
     setpoint=TARGET_DISTANCE
@@ -32,11 +32,13 @@ def update(error_x, distance):
     else:
         yaw_rate = yaw_pid(error_x)
 
+    print(f"Distance: {distance}")
+    
     if distance is None:
         forward_speed = 0
     else:
-        forward_speed = distance_pid(distance)
-        drone.move(
+        forward_speed = -distance_pid(distance)
+    drone.move(
         yaw_rate=yaw_rate,
         forward_speed=forward_speed
     )
