@@ -44,10 +44,22 @@ def update(error_x, distance):
         pid_output = distance_pid(distance)
         forward_velocity = -pid_output
 
+
+    print("------------------------")
+
+    print(f"Time             : {time.monotonic():.3f}")
+
+    print(f"Error X          : {error_x}")
+
+    print(f"Distance         : {distance}")
+
+    print(f"Yaw Rate         : {yaw_rate}")
+
+    print(f"PID Output       : {pid_output}")
+
+    print(f"Forward Velocity : {forward_velocity}")
+
     drone.move(
         yaw_rate=yaw_rate,
         forward_speed=forward_velocity
     )
-    print(time.monotonic())
-    print(distance)
-    print(distance_pid(distance))
