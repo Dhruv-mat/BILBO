@@ -33,7 +33,7 @@ while True:
     locked, error_x = tracker.is_locked(target, lock_center)
 
 
-    if abs(error_x) < 15:
+    if abs(error_x) < controller.YAW_DEADBAND:
 
         new_distance = lidar.read_data()
 
