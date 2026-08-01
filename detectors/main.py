@@ -34,6 +34,7 @@ while True:
 
 
     if abs(error_x) < controller.YAW_DEADBAND:
+        
 
         new_distance = lidar.read_data()
 
