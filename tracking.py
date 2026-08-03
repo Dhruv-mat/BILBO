@@ -13,7 +13,6 @@ last_detections = []
 
 class Detection:
     def __init__(self, coords, category, conf, metadata):
-        """Create a Detection object, recording the bounding box, category and confidence."""
         self.category = category
         self.conf = conf
         self.box = imx500.convert_inference_coords(coords, metadata, picam2)
@@ -78,25 +77,24 @@ def draw_detections(request, stream="main"):
             text_x = x + 5
             text_y = y + 15
 
-            # Create a copy of the array to draw the background with opacity
             overlay = m.array.copy()
 
-            # Draw the background rectangle on the overlay
+
             cv2.rectangle(
                 overlay,
                 (text_x, text_y - text_height),
                 (text_x + text_width, text_y + baseline),
-                (255, 255, 255),  # Background color (white)
+                (255, 255, 255),  
                 cv2.FILLED,
             )
 
             alpha = 0.30
             cv2.addWeighted(overlay, alpha, m.array, 1 - alpha, 0, m.array)
 
-            # Draw text on top of the background
+
             cv2.putText(m.array, label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-            # Draw detection box
+
             cv2.rectangle(m.array, (x, y), (x + w, y + h), (0, 255, 0, 0), thickness=2)
 
         if intrinsics.preserve_aspect_ratio:

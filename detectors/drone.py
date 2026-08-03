@@ -30,6 +30,8 @@ def disconnect_drone():
     master = None
 
 def get_heartbeat():
+    if not is_connected():
+        return None
     return master.wait_heartbeat(timeout=0)
 
 def get_attitude():
