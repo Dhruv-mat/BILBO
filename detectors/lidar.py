@@ -17,9 +17,6 @@ def read_data():
 
 
 
-
-
-
 if __name__ == "__main__":
     try:
         if ser.isOpen() == False:

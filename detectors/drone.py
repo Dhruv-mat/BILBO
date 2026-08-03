@@ -112,6 +112,22 @@ def hover():
         yaw_rate=0
     )
 
+def get_rc_channels():
+    if not is_connected:
+          return None
+    msg = master.recv_match(
+        type="RC_CHANNELS",
+        blocking=False
+    )
+    return msg
+
+def get_channel(channel):
+    
+    msg = get_rc_channels()
+    if msg is None:
+        return None
+    return getattr(msg, f"chan{channel}_raw")
+
 
 def move(forward_speed, right_speed=0, down_speed=0, yaw_rate=0):
 
