@@ -21,14 +21,13 @@ def connect(connection_string="/dev/ttyAMA0", baud=57600):
     )
 
 def disconnect_drone():
-    if not is_connected():
-            print("Drone not connected")
-            return
     global master
 
-    if master is not None:
-        master.close()
-        master = None
+    if master is None:
+        return
+
+    master.close()
+    master = None
 
 def get_heartbeat():
     return master.wait_heartbeat(timeout=0)
@@ -84,25 +83,24 @@ def get_mode():
 
 def set_mode(mode):
     if not is_connected():
-            print("Drone not connected")
-            return
+        print("Drone not connected")
+        return
+
     modes = master.mode_mapping()
-
-    master.set_mode(mode_id)
-
-    while master.flightmode != mode:
-        time.sleep(0.1)
-
     if mode not in modes:
-
         print("Unknown mode")
         return
     
     mode_id = modes[mode]
     master.set_mode(mode_id)
+    while master.flightmode != mode:
+        time.sleep(0.1)
 
 def is_connected():
     return master is not None
+
+def stop():
+    hover()
 
 def hover():
     move(
