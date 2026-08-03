@@ -21,6 +21,9 @@ def connect(connection_string="/dev/ttyAMA0", baud=57600):
     )
 
 def disconnect_drone():
+    if not is_connected():
+            print("Drone not connected")
+            return
     global master
 
     if master is not None:
@@ -31,6 +34,9 @@ def get_heartbeat():
     return master.wait_heartbeat(timeout=0)
 
 def get_attitude():
+    if not is_connected():
+            print("Drone not connected")
+            return
     msg = master.recv_match(
         type="ATTITUDE",
         blocking=False
@@ -38,6 +44,9 @@ def get_attitude():
     return msg
 
 def get_altitude():
+    if not is_connected():
+            print("Drone not connected")
+            return
     msg = master.recv_match(
         type="GLOBAL_POSITION_INT",
         blocking=False
@@ -58,6 +67,9 @@ def arm():
     print('ARMED')
 
 def disarm():
+    if not is_connected():
+            print("Drone not connected")
+            return
 
     master.arducopter_disarm()
     master.motors_disarmed_wait()
@@ -65,10 +77,22 @@ def disarm():
 
 
 def get_mode():
+    if not is_connected():
+            print("Drone not connected")
+            return
     return master.flightmode
 
 def set_mode(mode):
+    if not is_connected():
+            print("Drone not connected")
+            return
     modes = master.mode_mapping()
+
+    master.set_mode(mode_id)
+
+    while master.flightmode != mode:
+        time.sleep(0.1)
+
     if mode not in modes:
 
         print("Unknown mode")
@@ -90,9 +114,6 @@ def hover():
 
 
 def move(forward_speed, right_speed=0, down_speed=0, yaw_rate=0):
-
-    print ("Yaw Rate:",yaw_rate)
-    print("Forward Speed", forward_speed)
 
     if master is None:
         print("Drone not connected")
