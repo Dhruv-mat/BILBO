@@ -66,6 +66,6 @@ def update(error_x, distance):
     print(f"Forward Velocity : {forward_velocity}")
 
     drone.move(
-        yaw_rate=yaw_rate,
-        forward_speed=forward_velocity
+    forward_speed=forward_velocity,
+    yaw_rate=yaw_rate
     )
