@@ -47,9 +47,7 @@ while True:
 
     elif state == DroneState.TRACKING:
 
-        t0 = time.perf_counter()
         persons = camera.get_people()
-        t1 = time.perf_counter()
         target = tracker.select(persons)
 
         if target is not None:

@@ -113,7 +113,7 @@ def hover():
     )
 
 def get_rc_channels():
-    if not is_connected:
+    if not is_connected():
           return None
     msg = master.recv_match(
         type="RC_CHANNELS",
@@ -122,7 +122,7 @@ def get_rc_channels():
     return msg
 
 def get_channel(channel):
-    
+
     msg = get_rc_channels()
     if msg is None:
         return None
