@@ -1,31 +1,34 @@
 from pi5neo import Pi5Neo
 import time
 
-# 25 LEDs on SPI (GPIO10 / MOSI)
-leds = Pi5Neo("/dev/spidev0.0", 25)
+neo = Pi5Neo("/dev/spidev0.0", num_leds=25, spi_speed_khz=800)
 
-# 25% brightness
-leds.brightness = 64
+# Clear strip
+neo.clear_strip()
+neo.update_strip()
 
-# Turn everything off
-leds.fill((0, 0, 0))
 time.sleep(1)
 
 # Red
-leds.fill((255, 0, 0))
+neo.fill_strip(255, 0, 0)
+neo.update_strip()
 time.sleep(2)
 
 # Green
-leds.fill((0, 255, 0))
+neo.fill_strip(0, 255, 0)
+neo.update_strip()
 time.sleep(2)
 
 # Blue
-leds.fill((0, 0, 255))
+neo.fill_strip(0, 0, 255)
+neo.update_strip()
 time.sleep(2)
 
 # White
-leds.fill((255, 255, 255))
+neo.fill_strip(255, 255, 255)
+neo.update_strip()
 time.sleep(2)
 
 # Off
-leds.fill((0, 0, 0))
+neo.clear_strip()
+neo.update_strip()
