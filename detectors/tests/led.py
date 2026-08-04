@@ -3,32 +3,38 @@ import time
 
 neo = Pi5Neo("/dev/spidev0.0", num_leds=25, spi_speed_khz=800)
 
-# Clear strip
-neo.clear_strip()
-neo.update_strip()
+while True:
 
-time.sleep(1)
+    # One quick flash
+    neo.fill_strip(255, 255, 255)
+    neo.update_strip()
+    time.sleep(0.05)
 
-# Red
-neo.fill_strip(255, 0, 0)
-neo.update_strip()
-time.sleep(2)
+    neo.fill_strip(180, 0, 0)
+    neo.update_strip()
+    time.sleep(0.25)
 
-# Green
-neo.fill_strip(0, 255, 0)
-neo.update_strip()
-time.sleep(2)
+    # Two quick flashes
+    for _ in range(2):
+        neo.fill_strip(255, 255, 255)
+        neo.update_strip()
+        time.sleep(0.03)
 
-# Blue
-neo.fill_strip(0, 0, 255)
-neo.update_strip()
-time.sleep(2)
+        neo.fill_strip(180, 0, 0)
+        neo.update_strip()
+        time.sleep(0.08)
 
-# White
-neo.fill_strip(255, 255, 255)
-neo.update_strip()
-time.sleep(2)
+    time.sleep(0.2)
 
-# Off
-neo.clear_strip()
-neo.update_strip()
+    # Three rapid flashes
+    for _ in range(3):
+        neo.fill_strip(255, 255, 255)
+        neo.update_strip()
+        time.sleep(0.02)
+
+        neo.fill_strip(255, 0, 0)
+        neo.update_strip()
+        time.sleep(0.05)
+
+    # Hold red
+    time.sleep(0.6)
