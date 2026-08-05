@@ -23,7 +23,7 @@ import os
 # enumeration order can swap them between boots and the drone would attempt
 # MAVLink against the LiDAR. Read the exact string off the hardware with:
 #     ls -l /dev/serial/by-id/
-MAVLINK_DEVICE = "/dev/serial/by-id/SET-ME-SEE-COMMENT-ABOVE"
+MAVLINK_DEVICE = "/dev/serial/by-id/usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0"
 
 # If MAVLINK_DEVICE does not exist, drone.connect() falls back to globbing
 # by-id for these patterns and requires EXACTLY ONE match. One match is
@@ -31,7 +31,7 @@ MAVLINK_DEVICE = "/dev/serial/by-id/SET-ME-SEE-COMMENT-ABOVE"
 # hard failure rather than a guess.
 MAVLINK_DEVICE_GLOBS = (
     "/dev/serial/by-id/*FTDI*",
-    "/dev/serial/by-id/*FT232*",
+    "usb-Prolific_Technology_Inc._USB-Serial_Controller_D-if00-port0",
 )
 
 # Must match the Pixhawk's SERIALn_BAUD for the port the FTDI is wired to.
