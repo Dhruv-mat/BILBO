@@ -38,11 +38,12 @@ _buf = bytearray()
 _valid_frames = 0
 _bad_checksums = 0
 _rejected = 0
+_last_strength = None    # signal strength of the last accepted frame
 
 
 def init():
     """Open the LiDAR port. Raises on failure so preflight can abort loudly."""
-    global ser, _buf, _valid_frames, _bad_checksums, _rejected
+    global ser, _buf, _valid_frames, _bad_checksums, _rejected, _last_strength
 
     if ser is not None:
         return
@@ -51,6 +52,7 @@ def init():
     _valid_frames = 0
     _bad_checksums = 0
     _rejected = 0
+    _last_strength = None
 
     # exclusive=True turns the old silent byte-stealing port conflict into an
     # immediate, obvious failure. timeout is set so no future refactor can
@@ -99,7 +101,7 @@ def read_data():
     Advancing one byte at a time on a mismatch means a misaligned stream
     self-heals within a single frame.
     """
-    global _buf, _valid_frames, _bad_checksums, _rejected
+    global _buf, _valid_frames, _bad_checksums, _rejected, _last_strength
 
     if ser is None:
         return None
@@ -125,6 +127,7 @@ def read_data():
                 strength = frame[4] | (frame[5] << 8)
                 if _valid(dist, strength):
                     newest = dist
+                    _last_strength = strength
                     _valid_frames += 1
                 else:
                     _rejected += 1
@@ -139,10 +142,21 @@ def read_data():
     return newest
 
 
+def last_strength():
+    """Signal strength of the last accepted frame, or None.
+
+    Diagnostic only -- the flight path gates on strength inside _valid(). Low
+    strength outdoors (bright sun, dark clothing) is the dominant TF Luna
+    failure mode, so being able to watch this on a bench is worth having.
+    """
+    return _last_strength
+
+
 def health():
     """Counters for logging and preflight diagnosis."""
     return {
         "valid": _valid_frames,
         "bad_checksum": _bad_checksums,
         "rejected": _rejected,
+        "strength": _last_strength,
     }

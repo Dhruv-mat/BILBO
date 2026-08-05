@@ -135,18 +135,6 @@ if "cv2" not in sys.modules:
     sys.modules["cv2"] = cv2_mod
 
 
-# -------------------------------------------------------- hermetic config ----
-
-# config.BENCH_MODE is read from BILBO_BENCH_MODE at import time. Pin it off so
-# the suite is deterministic no matter what the developer's shell happens to
-# have set -- otherwise a run with bench mode enabled would silently disable
-# the very engagement gates these tests exist to verify. The bench-mode section
-# of test_state.py toggles it explicitly and restores it.
-import config as _cfg  # noqa: E402
-
-_cfg.BENCH_MODE = False
-
-
 # ------------------------------------------------------------- utilities ----
 
 def tf_frame(dist_cm, strength=1000, corrupt=False):

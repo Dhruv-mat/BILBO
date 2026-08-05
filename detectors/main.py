@@ -332,14 +332,6 @@ def preflight():
     Battery, GPS, compass and EKF checks are deliberately absent -- those are
     the Pixhawk's responsibility.
     """
-    if cfg.BENCH_MODE:
-        _log.warning("=" * 68)
-        _log.warning("BENCH_MODE IS ENABLED -- GROUND TESTING ONLY")
-        _log.warning("  armed and minimum-altitude engagement gates: BYPASSED")
-        _log.warning("  forward velocity: forced to zero (yaw-only)")
-        _log.warning("  set config.BENCH_MODE = False before any flight")
-        _log.warning("=" * 68)
-
     led.init()
     led.selftest()
 
@@ -522,12 +514,6 @@ def run_tick(now, tick_duration):
         soft_reset()
         state = DroneState.READY
 
-    if cfg.BENCH_MODE:
-        # Repeated for the whole run so this cannot be left enabled unnoticed.
-        _status(now, "*** BENCH_MODE ON: airborne gates bypassed, forward "
-                     "velocity forced to zero. Set config.BENCH_MODE = False "
-                     "before flight. ***")
-
     # ---- state machine ----------------------------------------------------
     if state == DroneState.IDLE:
         soft_reset()
@@ -541,15 +527,11 @@ def run_tick(now, tick_duration):
         target = tracker.select(persons) if vision_ok else None
         confirm_count = confirm_count + 1 if target is not None else 0
 
-        # Bench mode bypasses the airborne gates so the loop can be exercised on
-        # the ground. It forces yaw-only below, so it cannot command translation.
-        armed_ok = armed or cfg.BENCH_MODE
-        alt_ok = cfg.BENCH_MODE or (alt is not None
-                                    and alt >= cfg.MIN_TRACK_ALT_M)
+        alt_ok = alt is not None and alt >= cfg.MIN_TRACK_ALT_M
         target_ok = confirm_count >= cfg.TARGET_CONFIRM_FRAMES
 
         if engage_armed:
-            if not armed_ok:
+            if not armed:
                 _status(now, "engage held: not armed")
             elif not alt_ok:
                 _status(now, "engage held: altitude %s < %.1f m",
@@ -607,9 +589,7 @@ def run_tick(now, tick_duration):
                     dist = distance_or_none(now)
 
                 record.update(controller.update(
-                    error_x, dist,
-                    # Bench mode can never command translation.
-                    yaw_only=(enable == YAW_ONLY or cfg.BENCH_MODE),
+                    error_x, dist, yaw_only=(enable == YAW_ONLY)
                 ))
                 record["error_y"] = error_y
 

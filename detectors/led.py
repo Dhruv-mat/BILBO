@@ -197,9 +197,7 @@ def render(state, fault=None):
     now = time.monotonic()
 
     if _liveness_overrides(now):
-        # Orange liveness blips instead of white mean the airborne gates are
-        # bypassed. Visible on the airframe without reading a log.
-        _write(colours["orange" if cfg.BENCH_MODE else "white"])
+        _write(colours["white"])
         return
 
     if fault is not None:

@@ -12,29 +12,9 @@ mandatory: _CM, _M, _S, _PX, _DEG.
 
 import os
 
-# --------------------------------------------------------------- bench mode ----
-
-# GROUND TESTING ONLY. Bypasses the armed and minimum-altitude engagement gates,
-# which can never be satisfied on a bench with no propellers fitted.
-#
-# Enable it per-run from the environment, NOT by editing this file:
-#
-#     BILBO_BENCH_MODE=1 python detectors/main.py
-#
-# An environment variable is deliberately used instead of a constant here: it
-# cannot be committed to git by accident, and it disappears on reboot or when
-# the shell closes. There is no way for it to quietly persist into a real flight.
-#
-# THREE SAFEGUARDS, because a gate-bypass switch left on is exactly the kind of
-# thing that causes an accident:
-#   1. Forward velocity is forced to zero regardless of the RC switch position,
-#      so the worst case if it is somehow still on in the air is a drone that
-#      only yaws -- useless, but not dangerous.
-#   2. A warning banner at startup and a repeating warning every half second for
-#      the entire run.
-#   3. The LED liveness flash turns ORANGE instead of white, so bench mode is
-#      visible on the airframe without reading a log.
-BENCH_MODE = os.environ.get("BILBO_BENCH_MODE", "0") == "1"
+# Ground testing lives in bench.py, which is a separate program. There is
+# deliberately no gate-bypass flag in the flight configuration: the engagement
+# gates (armed, minimum altitude, confirmed target) have no off switch.
 
 # ---------------------------------------------------------------- devices ----
 
@@ -268,7 +248,7 @@ HARD_MAX_YAW_RATE_DEG_S = 60.0
 
 # --------------------------------------------------- state machine / RC -----
 
-CH_ENABLE = 6
+CH_ENABLE = 8
 # 3-position: OFF / YAW_ONLY / FULL. YAW_ONLY validates the yaw loop in the air
 # with zero translation risk, which matters because the yaw sign was inverted.
 SWITCH_MID_LOW_US = 1300

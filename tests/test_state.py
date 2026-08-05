@@ -3,6 +3,7 @@
 Targets every transition defect identified in the review.
 """
 
+import os
 import sys
 import types
 
@@ -417,53 +418,22 @@ check("MAX_TRACK_DURATION cap -> RTL", main.state == DroneState.RTL,
       "-> %s" % main.state.name)
 
 
-print("\n=== BENCH_MODE: bypasses airborne gates, forbids translation ===")
+print("\n=== Engagement gates have no bypass ===")
 
-import lidar
-from harness import tf_frame
+# Ground testing lives in bench.py, a separate program. There must be no flag,
+# constant or environment variable in the flight code that can relax these.
+check("no BENCH_MODE attribute exists in config",
+      not hasattr(cfg, "BENCH_MODE"))
+check("no bypass-looking environment variable is consulted",
+      not any(k.startswith("BILBO_BENCH") for k in os.environ))
 
-cfg.BENCH_MODE = True
-try:
-    # Grounded and disarmed: normally refused, permitted under bench mode.
-    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
-    fake_drone.armed = False
-    fake_drone.alt = 0.0
-    tick(2)
-    fake_drone.rc[cfg.CH_ENABLE] = 1900
-    tick(cfg.TARGET_CONFIRM_FRAMES + 2)
-    check("BENCH_MODE engages while disarmed and grounded",
-          main.state == DroneState.TRACKING, "-> %s" % main.state.name)
-
-    # With a valid in-gate range, forward velocity must STILL be zero: this is
-    # the safeguard that makes leaving bench mode on merely useless, not unsafe.
-    lidar.init()
-    del sent[:]
-    for _ in range(40):
-        lidar.ser.feed(tf_frame(600))       # far target -> would normally fly
-        CLOCK[0] += cfg.TICK_PERIOD_S
-        fake_camera.ts = CLOCK[0]
-        fake_camera.persons = [CENTRED]
-        main.run_tick(CLOCK[0], 0.001)
-    forwards = [s[0] for s in sent]
-    check("BENCH_MODE never commands forward velocity",
-          forwards and all(f == 0.0 for f in forwards),
-          "max |fwd| = %.3f over %d setpoints"
-          % (max(abs(f) for f in forwards) if forwards else -1, len(forwards)))
-    check("BENCH_MODE still commands yaw (the loop is genuinely running)",
-          any(s[3] != 0.0 for s in sent) or main.state == DroneState.TRACKING,
-          "-> state %s" % main.state.name)
-    lidar.close()
-finally:
-    cfg.BENCH_MODE = False
-
-# And with bench mode off again, the gates must be back.
 fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
 fake_drone.armed = False
 fake_drone.alt = 0.0
 tick(2)
 fake_drone.rc[cfg.CH_ENABLE] = 1900
-tick(cfg.TARGET_CONFIRM_FRAMES + 2)
-check("gates are restored when BENCH_MODE is off",
+tick(cfg.TARGET_CONFIRM_FRAMES + 4)
+check("disarmed and grounded cannot engage under any configuration",
       main.state == DroneState.READY, "-> %s" % main.state.name)
 
 
