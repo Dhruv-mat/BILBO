@@ -19,6 +19,7 @@ LED failure must never stop the aircraft, so every entry point degrades to a
 no-op if the strip is unavailable.
 """
 
+import inspect
 import logging
 import time
 
@@ -35,6 +36,14 @@ except Exception:  # pragma: no cover - bench machines have no pi5neo
 neo = None
 _available = False
 _last_written = None
+
+# pi5neo's constructor and fill_strip signatures differ across versions: some
+# accept a `brightness` kwarg, some do not, and fill_strip is (r, g, b) in the
+# versions seen so far but a single tuple in others. Rather than assume, probe
+# once at init and adapt. Guessing wrong here previously produced a TypeError on
+# every single LED write.
+_hw_brightness = False      # True if the library scales brightness for us
+_fill_takes_tuple = False
 
 # Liveness proof. Incremented only by the control loop, so if the loop stalls
 # the flashes stop and the pilot gets an immediate visual cue for exactly the
@@ -75,30 +84,66 @@ _STATE_APPEARANCE = {
 }
 
 
+def _accepted_params(func):
+    try:
+        return set(inspect.signature(func).parameters)
+    except (TypeError, ValueError):
+        return set()
+
+
 def init():
     """Open the strip. Never raises -- LEDs are not flight critical."""
-    global neo, _available
+    global neo, _available, _hw_brightness, _fill_takes_tuple
 
     if Pi5Neo is None:
         _log.warning("pi5neo unavailable; LED output disabled")
         return False
 
+    accepted = _accepted_params(Pi5Neo.__init__)
+    kwargs = {}
+    if "num_leds" in accepted:
+        kwargs["num_leds"] = cfg.LED_COUNT
+    if "spi_speed_khz" in accepted:
+        kwargs["spi_speed_khz"] = cfg.LED_SPI_KHZ
+    if "brightness" in accepted:
+        kwargs["brightness"] = cfg.LED_BRIGHTNESS
+        _hw_brightness = True
+    else:
+        # No hardware brightness: scale the channels ourselves in _write().
+        _hw_brightness = False
+
     try:
-        neo = Pi5Neo(cfg.LED_DEVICE, num_leds=cfg.LED_COUNT,
-                     brightness=cfg.LED_BRIGHTNESS,
-                     spi_speed_khz=cfg.LED_SPI_KHZ)
-        _available = True
-        blank()
-        return True
+        neo = Pi5Neo(cfg.LED_DEVICE, **kwargs)
     except Exception:
         _log.exception("LED init failed; continuing without LEDs")
         neo = None
         _available = False
         return False
 
+    # fill_strip(r, g, b) vs fill_strip((r, g, b)).
+    fill_params = _accepted_params(getattr(neo, "fill_strip", None))
+    _fill_takes_tuple = len(fill_params) < 3
+
+    _available = True
+    _log.info("LED strip ready on %s (%d leds, brightness in %s, "
+              "fill_strip takes %s)",
+              cfg.LED_DEVICE, cfg.LED_COUNT,
+              "hardware" if _hw_brightness else "software",
+              "a tuple" if _fill_takes_tuple else "r,g,b")
+    blank()
+    return True
+
 
 def is_available():
     return _available
+
+
+def _scaled(rgb):
+    """Apply brightness in software when the library cannot do it."""
+    if _hw_brightness:
+        return rgb
+    b = cfg.LED_BRIGHTNESS
+    return (int(rgb[0] * b), int(rgb[1] * b), int(rgb[2] * b))
 
 
 def _write(rgb):
@@ -107,8 +152,12 @@ def _write(rgb):
 
     if not _available or rgb == _last_written:
         return
+    out = _scaled(rgb)
     try:
-        neo.fill_strip(*rgb)
+        if _fill_takes_tuple:
+            neo.fill_strip(out)
+        else:
+            neo.fill_strip(*out)
         neo.update_strip()
         _last_written = rgb
     except Exception:

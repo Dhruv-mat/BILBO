@@ -62,14 +62,24 @@ sys.modules.setdefault("serial", serial_mod)
 # --------------------------------------------------------------- pi5neo ----
 
 class FakeNeo:
-    def __init__(self, *a, **kw):
+    """Mirrors the REAL pi5neo signature deliberately.
+
+    Note what is absent: there is no `brightness` kwarg. The installed pi5neo
+    does not accept one, and passing it raised TypeError on every LED write.
+    Keeping this stub honest is what makes the suite catch that class of bug
+    instead of papering over it with **kwargs.
+    """
+
+    def __init__(self, spi_device, num_leds=10, spi_speed_khz=800):
+        self.spi_device = spi_device
+        self.num_leds = num_leds
+        self.spi_speed_khz = spi_speed_khz
         self.writes = []
         self._pending = None
 
     def fill_strip(self, r, g, b):
-        # Three positional args, matching the real pi5neo signature. The
-        # pre-review led.py passed a single tuple here, which raised TypeError
-        # on every LED write.
+        # Three positional args, not a tuple. The pre-review led.py passed a
+        # single tuple here, which was a second independent TypeError.
         self._pending = (r, g, b)
 
     def update_strip(self):

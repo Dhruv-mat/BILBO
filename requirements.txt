@@ -1,0 +1,58 @@
+# BILBO Python dependencies (Raspberry Pi 5)
+#
+#   python3 -m venv --system-site-packages ~/bilbo-venv
+#   source ~/bilbo-venv/bin/activate
+#   pip install -r requirements.txt
+#
+# The --system-site-packages flag is REQUIRED, not optional. picamera2 and
+# libcamera are apt packages that cannot be pip-installed; without that flag the
+# venv cannot see them and `import picamera2` fails.
+#
+# ---------------------------------------------------------------------------
+# APT PACKAGES -- install these FIRST, outside the venv. They are not pip
+# installable and are deliberately not listed below.
+#
+#   sudo apt install -y python3-picamera2 python3-opencv imx500-all
+#
+#     python3-picamera2  camera pipeline (pulls in libcamera and numpy)
+#     python3-opencv     cv2, used for the bench preview overlay
+#     imx500-all         IMX500 firmware + the .rpk models in
+#                        /usr/share/imx500-models/ that camera.py loads
+#
+# INTERFACES -- enable both, then log out and back in:
+#
+#   sudo raspi-config
+#     Interface Options -> SPI          -> Enable     (NeoPixel /dev/spidev0.0)
+#     Interface Options -> Serial Port  -> login shell: NO, hardware: YES
+#                                                       (TF Luna on /dev/ttyAMA0)
+#   sudo usermod -aG dialout,spi,gpio $USER
+#
+# The serial-console answer matters: leaving the login shell enabled means the
+# console fights the TF Luna for /dev/ttyAMA0.
+# ---------------------------------------------------------------------------
+
+# MAVLink to the Pixhawk. Used by detectors/drone.py.
+pymavlink>=2.4.41
+
+# TF Luna serial. Used by detectors/lidar.py, which relies on `exclusive=True`
+# (pyserial >= 3.3) so a port conflict fails loudly instead of silently having
+# two readers steal each other's bytes.
+pyserial>=3.5
+
+# PID controllers. Used by detectors/controller.py.
+#
+# PINNED TO THE 2.x LINE ON PURPOSE. The yaw sign convention in
+# controller.py depends on simple_pid computing `error = setpoint - input`,
+# verified against the 2.0.1 source. If a future 3.x changed that, the yaw loop
+# would silently become positive feedback and the drone would spin away from its
+# target. Do not widen this bound without re-running tests/run_tests.py and
+# re-doing the props-off tools/verify_yaw_sign.py check.
+simple-pid>=2.0,<3.0
+
+# NeoPixel status strip over SPI. Used by detectors/led.py.
+#
+# The installed version's constructor does NOT accept a `brightness` kwarg, and
+# its fill_strip takes (r, g, b) rather than a tuple. led.py introspects both
+# signatures at init and adapts, so it works either way and applies brightness
+# in software when the library cannot.
+pi5neo

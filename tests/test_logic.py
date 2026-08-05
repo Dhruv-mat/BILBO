@@ -250,7 +250,13 @@ check("get_lock_center handles None distance",
 
 print("\n=== LED: solid holds, writes only on change ===")
 
-led.init()
+ok = led.init()
+check("led.init() succeeds against a pi5neo with no brightness kwarg",
+      ok and led.neo is not None)
+check("no brightness kwarg was passed to the constructor",
+      led._hw_brightness is False)
+check("fill_strip convention detected as r,g,b",
+      led._fill_takes_tuple is False)
 neo = led.neo
 neo.writes.clear()
 led._last_written = None
@@ -259,12 +265,18 @@ for _ in range(10):
     led.led_status("solid", "green")
 check("solid writes once, not once per call", len(neo.writes) == 1,
       "-> %d writes" % len(neo.writes))
-check("solid wrote the right colour", neo.writes[0] == (0, 255, 0),
-      "-> %r" % (neo.writes[0],))
+check("solid wrote green, brightness-scaled",
+      neo.writes[0] == led._scaled(led.colours["green"]),
+      "-> %r (expected %r)" % (neo.writes[0],
+                               led._scaled(led.colours["green"])))
+check("software brightness scaling is applied",
+      led._hw_brightness or neo.writes[0] != led.colours["green"],
+      "-> %r at brightness %.2f" % (neo.writes[0], cfg.LED_BRIGHTNESS))
 
 led.led_status("solid", "red")
 check("colour change triggers exactly one more write",
-      len(neo.writes) == 2 and neo.writes[-1] == (255, 0, 0),
+      len(neo.writes) == 2
+      and neo.writes[-1] == led._scaled(led.colours["red"]),
       "-> %r" % (neo.writes,))
 
 led.led_status("solid", "nonexistent-colour")
@@ -279,7 +291,8 @@ while _t.monotonic() - t0 < led.BLINK_PERIOD_S * 2.2:
     led.led_status("blink", "yellow")
     states.add(neo.writes[-1])
 check("blink alternates between colour and off",
-      (255, 255, 0) in states and (0, 0, 0) in states, "-> %r" % (states,))
+      led._scaled(led.colours["yellow"]) in states
+      and (0, 0, 0) in states, "-> %r" % (states,))
 
 # Liveness must depend on the control loop, not wall clock.
 led._last_tick_time = 0.0
