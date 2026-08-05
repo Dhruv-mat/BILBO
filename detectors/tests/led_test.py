@@ -1,7 +1,7 @@
 from pi5neo import Pi5Neo
 import time
 
-neo = Pi5Neo("/dev/spidev0.0", num_leds=25, spi_speed_khz=800)
+neo = Pi5Neo("/dev/spidev0.0", num_leds=25, brightness=0.3, spi_speed_khz=800)
 
 while True:
 
