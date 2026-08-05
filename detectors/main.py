@@ -4,29 +4,27 @@ import tracker
 import time
 import controller
 import drone 
+import led
 from state import DroneState
+
 
 
 
 print("hi bitches")
 cam_x_cent , cam_y_cent = camera.intitalise()
-last_good_distance = None
-CAMERA_CENTER = cam_x_cent//2
 
 drone.connect()
-state = DroneState.READY
-
-search_start_time = None
-
+CAMERA_CENTER = cam_x_cent//2
 SEARCH_TIMEOUT = 10
 SEARCH_YAW_RATE = 8
 LOST_FRAME_LIMIT = 6
-
-lost_frames = 0
-
-
 SWITCH_HIGH = 1800
 SWITCH_LOW = 1200
+
+state = DroneState.READY
+last_good_distance = None
+search_start_time = None
+lost_frames = 0
 
 while True:
 
@@ -41,7 +39,7 @@ while True:
     if state == DroneState.READY:
         if ch6 is not None and ch6 > SWITCH_HIGH:
             print("Tracking enabled")
-
+            led.led_status(effect="solid", color="blue")
             state = DroneState.TRACKING
             continue
 
@@ -49,6 +47,7 @@ while True:
 
         persons = camera.get_people()
         target = tracker.select(persons)
+        led.led_status(effect="solid", color="green")
 
         if target is not None:
             lost_frames = 0
@@ -80,7 +79,7 @@ while True:
     elif state == DroneState.SEARCHING:
 
         print("Searching...")
-
+        led.led_status(effect="blink", color="yellow")
         persons = camera.get_people()
         target = tracker.select(persons)
 
@@ -97,7 +96,7 @@ while True:
             state = DroneState.RTL
 
     elif state == DroneState.IDLE:
-
+        led.led_status(effect="solid", color="white")
         if mode == "GUIDED":
             print("READY")
             state = DroneState.READY
@@ -106,11 +105,11 @@ while True:
 
     elif state == DroneState.RTL:
         print("RTL")
+        led.led_status(effect="solid", color="purple")
         drone.set_mode("RTL")
         continue
 
     elif state == DroneState.EMERGENCY:
         drone.hover()
-        break
-    # print(f"Camera: {(t1-t0)*1000:.1f} ms")
-    # print(f"LiDAR : {(t2-t1)*1000:.1f} ms")
+        led.led_status(effect="blink", color="red")
+        continue

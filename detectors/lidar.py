@@ -1,8 +1,5 @@
-import time
 import serial
 import math
-
-
 
 ser = serial.Serial("/dev/ttyAMA0", 115200)
 
@@ -16,13 +13,12 @@ def read_data():
     return None
 
 
-
 if __name__ == "__main__":
     try:
         if ser.isOpen() == False:
             ser.open()
         read_data()
-    except KeyboardInterrupt(): # ctrl + c in terminal.
+    except KeyboardInterrupt():
         if ser != None:
             ser.close()
             print("program interrupted by the user")

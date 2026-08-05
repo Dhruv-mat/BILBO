@@ -1,5 +1,6 @@
 import drone
 from simple_pid import PID
+import time
 
 MAX_YAW_RATE =20
 YAW_DEADBAND = 50
@@ -22,12 +23,7 @@ distance_pid = PID(
 )
 
 yaw_pid.output_limits = (-MAX_YAW_RATE, MAX_YAW_RATE)
-
 distance_pid.output_limits = (-MAX_FORWARD_SPEED, MAX_FORWARD_SPEED)
-
-import time
-
-
 
 def update(error_x, distance):
 
@@ -35,36 +31,24 @@ def update(error_x, distance):
         yaw_rate = 0
     else:
         yaw_rate = yaw_pid(error_x)
-
     print(f"Distance: {distance}")
 
     if distance is None:
-
         pid_output = 0
-
         forward_velocity = 0
 
     else:
-
         pid_output = distance_pid(distance)
-
         forward_velocity = -pid_output
 
-
     print("------------------------")
-
     print(f"Time             : {time.monotonic():.3f}")
-
     print(f"Error X          : {error_x}")
-
     print(f"Distance         : {distance}")
-
     print(f"Yaw Rate         : {yaw_rate}")
-
     print(f"PID Output       : {pid_output}")
-
     print(f"Forward Velocity : {forward_velocity}")
-
+    
     drone.move(
     forward_speed=forward_velocity,
     yaw_rate=yaw_rate
