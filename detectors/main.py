@@ -103,7 +103,7 @@ def _setup_logging():
         # loop freezes.
         stream = logging.StreamHandler(sys.stderr)
         stream.setFormatter(fmt)
-        root.addHandler(stream
+        root.addHandler(stream)
 
 
 CSV_COLUMNS = [
@@ -282,7 +282,7 @@ def request_mode(mode, timeout=1.5, retries=1):
     _slow_tick = True
     if drone.set_mode(mode, timeout=timeout, retries=retries):
         self_commanded_mode = mode
-        return True
+        return Tru
     return False
 
 
@@ -323,15 +323,7 @@ def _wait_for(predicate, timeout, interval=0.05, pump=None):
 
 
 def preflight():
-    """Prove every sensor the flight loop depends on before signalling READY.
 
-    Ordering matters: the flight controller comes first because it is the
-    component whose absence must abort. The original started the camera first
-    and then blocked forever in wait_heartbeat().
-
-    Battery, GPS, compass and EKF checks are deliberately absent -- those are
-    the Pixhawk's responsibility.
-    """
     led.init()
     led.selftest()
 
