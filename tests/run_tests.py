@@ -17,7 +17,8 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITES = ("test_logic.py", "test_state.py")
+SUITES = ("audit_static.py", "test_invariants.py", "test_logic.py",
+          "test_state.py", "test_runtime.py")
 
 
 def main():

@@ -19,6 +19,7 @@ _log = logging.getLogger(__name__)
 
 # The currently tracked person, carried across frames.
 _target = None
+_misses = 0        # consecutive frames the target was not re-associated
 
 
 def configure(width_px, height_px):
@@ -44,10 +45,11 @@ def configure(width_px, height_px):
 
 def reset():
     """Forget the current target so the next select() re-designates."""
-    global _target
+    global _target, _misses
     if _target is not None:
         _log.info("tracker target cleared")
     _target = None
+    _misses = 0
 
 
 def has_target():
@@ -61,8 +63,8 @@ def get_lock_center(distance_cm):
     The original divided BASELINE = 0.05 (metres) by a distance in centimetres,
     yielding a 0.15 px correction where the true parallax for a 5 cm baseline at
     1.6 m is ~1.79 deg or ~14.7 px -- 100x too small, so the correction was
-    effectively absent. That was harmless only while the gate was 50 px wide;
-    it becomes live now that the gate is 15 px.
+    effectively absent. It matters now that the range gate is sized to the
+    target box and can be as tight as LIDAR_HGATE_MIN_PX.
     """
     center = cfg.IMAGE_WIDTH_PX / 2.0
     if distance_cm is None or distance_cm <= 0:
@@ -71,21 +73,42 @@ def get_lock_center(distance_cm):
     return center + cfg.LIDAR_OFFSET_SIGN * angle_deg * cfg.PIXELS_PER_DEGREE
 
 
+def _clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def hgate_px(box_width_px):
+    """Horizontal range-gate half-width, proportional to the target's box.
+
+    The beam lands on the person if it falls anywhere across their body, and the
+    box width is exactly that width in pixels. A fixed gate ignored this and was
+    several times tighter than the geometry requires.
+    """
+    return _clamp(box_width_px * cfg.LIDAR_HGATE_FRAC,
+                  cfg.LIDAR_HGATE_MIN_PX, cfg.LIDAR_HGATE_MAX_PX)
+
+
+def vgate_px(box_height_px):
+    """Vertical range-gate half-height: keep the beam on the torso."""
+    return _clamp(box_height_px * cfg.LIDAR_VGATE_FRAC,
+                  cfg.LIDAR_VGATE_MIN_PX, cfg.LIDAR_VGATE_MAX_PX)
+
+
 def is_locked(person, lock_center_x):
     """Return (locked, error_x, error_y) in pixels.
 
-    error_y is measured against the LiDAR's boresight row, not the image centre.
-    The original computed only a horizontal condition and then discarded its own
-    `locked` return value at the call site. Without a vertical check, flying at
-    altitude means the forward beam shoots over the person's head while the
-    camera still sees them perfectly.
+    `locked` now covers BOTH axes, so callers do not need a second vertical
+    check. error_y is measured against the LiDAR's boresight row, not the image
+    centre: without a vertical condition, flying at altitude means the forward
+    beam shoots over the person's head while the camera still sees them fine.
     """
     if person is None or lock_center_x is None:
         return False, 0.0, 0.0
 
     error_x = person.center_x - lock_center_x
     error_y = person.center_y - cfg.LIDAR_BORESIGHT_ROW_PX
-    locked = abs(error_x) < cfg.LIDAR_HGATE_PX
+    locked = (abs(error_x) < hgate_px(person.width)
+              and abs(error_y) < vgate_px(person.height))
     return locked, error_x, error_y
 
 
@@ -95,9 +118,14 @@ def select(persons):
     None means "this frame did not contain our target" and is counted as a lost
     frame by the caller. It does not mean "no people in view".
     """
-    global _target
+    global _target, _misses
 
     if not persons:
+        _misses += 1
+        if _misses >= cfg.TRACK_MAX_MISSES and _target is not None:
+            _log.info("target dropped after %d misses; will re-designate",
+                      _misses)
+            _target = None
         return None
 
     prev = _target
@@ -107,6 +135,7 @@ def select(persons):
         # the initial target at engage time; from then on identity is carried
         # by association below.
         _target = max(persons, key=lambda p: p.area)
+        _misses = 0
         _log.info("target designated at x=%.0f y=%.0f area=%d",
                   _target.center_x, _target.center_y, _target.area)
         return _target
@@ -125,10 +154,26 @@ def select(persons):
     ]
 
     if not candidates:
-        # Gate failed. Better to lose the target briefly than to lock onto the
-        # wrong person; the caller's lost-frame logic handles the gap, and
-        # reset() re-designates after a genuine loss.
+        _misses += 1
+        if _misses >= cfg.TRACK_MAX_MISSES:
+            # Self-heal. Without this the tracker compares every future frame
+            # against a stale position forever: once the person has moved beyond
+            # TRACK_GATE_PX of where they used to be, they can never
+            # re-associate and the target is lost permanently.
+            _target = max(persons, key=lambda p: p.area)
+            _log.info("re-designating after %d failed associations "
+                      "(x=%.0f y=%.0f)",
+                      _misses, _target.center_x, _target.center_y)
+            _misses = 0
+            return _target
+        # Brief gap. Better to report a miss than to lock onto the wrong person.
         return None
 
     _target = min(candidates, key=distance_to_prev)
+    _misses = 0
     return _target
+
+
+def misses():
+    """Consecutive frames the target could not be re-associated. Diagnostic."""
+    return _misses

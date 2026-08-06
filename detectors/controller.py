@@ -16,11 +16,11 @@ import drone
 
 _log = logging.getLogger(__name__)
 
-# Kept as module-level names for compatibility with existing call sites.
-YAW_DEADBAND = cfg.YAW_DEADBAND_PX
-TARGET_DISTANCE = cfg.TARGET_DISTANCE_CM
-MAX_YAW_RATE = cfg.MAX_YAW_RATE_DEG_S
-MAX_FORWARD_SPEED = cfg.MAX_FORWARD_SPEED_MS
+# Deliberately no module-level copies of the config values. A `YAW_DEADBAND`
+# alias existed here for "compatibility" but nothing referenced it, and once the
+# deadband became proportional to the target box it was actively misleading --
+# a second name that no longer described the behaviour. Read cfg directly, or
+# call deadband_px().
 
 # output_limits are set in the constructor rather than assigned afterwards so
 # integral clamping is armed from the very first sample.
@@ -68,7 +68,21 @@ def reset():
     _last_slew_time = None
 
 
-def _deadband_error(error_x):
+def deadband_px(target_width_px=None):
+    """Yaw deadband in pixels, proportional to the target box width.
+
+    Falls back to the fixed constant when no box is available. Always
+    stays inside the range gate -- see the note at cfg.YAW_DEADBAND_FRAC
+    for why the two thresholds must not cross.
+    """
+    if target_width_px is None or target_width_px <= 0:
+        return cfg.YAW_DEADBAND_PX
+    scaled = target_width_px * cfg.YAW_DEADBAND_FRAC
+    return max(cfg.YAW_DEADBAND_MIN_PX,
+               min(cfg.YAW_DEADBAND_MAX_PX, scaled))
+
+
+def _deadband_error(error_x, deadband):
     """Shrink the error by the deadband instead of zeroing the output.
 
     The original produced yaw_rate = 0 inside 50 px and 5.1 deg/s at 51 px -- a
@@ -76,9 +90,9 @@ def _deadband_error(error_x):
     a limit cycle. Shrinking keeps the output continuous through zero while
     still providing a genuine dead zone.
     """
-    if abs(error_x) <= cfg.YAW_DEADBAND_PX:
+    if abs(error_x) <= deadband:
         return 0.0
-    return error_x - math.copysign(cfg.YAW_DEADBAND_PX, error_x)
+    return error_x - math.copysign(deadband, error_x)
 
 
 def _slew(desired, now):
@@ -109,7 +123,8 @@ def _slew(desired, now):
     return desired
 
 
-def update(error_x, distance_cm, yaw_only=False, send=True, now=None):
+def update(error_x, distance_cm, yaw_only=False, send=True, now=None,
+           target_width_px=None):
     """Compute and optionally send one setpoint. Returns a telemetry dict.
 
     Both PIDs are always called and their *outputs* gated -- never the calls
@@ -128,7 +143,9 @@ def update(error_x, distance_cm, yaw_only=False, send=True, now=None):
     # simple_pid returns Kp*(setpoint - input) which is negative. Without the
     # negation the loop is positive feedback and the drone spins away from the
     # target until it leaves frame.
-    yaw_rate = cfg.YAW_PID_OUTPUT_SIGN * yaw_pid(_deadband_error(error_x))
+    deadband = deadband_px(target_width_px)
+    yaw_rate = cfg.YAW_PID_OUTPUT_SIGN * yaw_pid(
+        _deadband_error(error_x, deadband))
 
     # ------------------------------------------------------- forward -------
     bearing_deg = abs(error_x) / cfg.PIXELS_PER_DEGREE
@@ -180,6 +197,7 @@ def update(error_x, distance_cm, yaw_only=False, send=True, now=None):
         "forward": forward,
         "gate": gate_reason or "open",
         "backing_off": backing_off,
+        "deadband_px": deadband,
     }
 
     if send:
@@ -201,4 +219,5 @@ def hold(send=True):
         "forward": 0.0,
         "gate": "hold",
         "backing_off": False,
+        "deadband_px": cfg.YAW_DEADBAND_PX,
     }

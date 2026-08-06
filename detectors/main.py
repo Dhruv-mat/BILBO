@@ -103,7 +103,7 @@ def _setup_logging():
         # loop freezes.
         stream = logging.StreamHandler(sys.stderr)
         stream.setFormatter(fmt)
-        root.addHandler(stream)
+        root.addHandler(stream
 
 
 CSV_COLUMNS = [
@@ -579,17 +579,18 @@ def run_tick(now, tick_duration):
                 locked, error_x, error_y = tracker.is_locked(target, lock_center)
                 last_error_x = error_x
 
-                # Gate the range on BOTH axes and with a threshold tighter than
-                # the ~2 deg beam. The old gate was the 50 px yaw deadband
-                # (~6.1 deg), so it trusted readings taken while the beam was
-                # entirely off the person, and it never checked vertically at
-                # all -- at altitude the beam passes over their head.
-                if locked and abs(error_y) < cfg.LIDAR_VGATE_PX:
+                # is_locked() now covers both axes, sized to the target's own
+                # bounding box: the beam lands on the person if it falls
+                # anywhere across their body, and the box measures exactly
+                # that width. A fixed pixel gate ignored range entirely and
+                # was several times tighter than the geometry requires.
+                if locked:
                     update_distance(lidar.read_data(), now)
                     dist = distance_or_none(now)
 
                 record.update(controller.update(
-                    error_x, dist, yaw_only=(enable == YAW_ONLY)
+                    error_x, dist, yaw_only=(enable == YAW_ONLY),
+                    target_width_px=target.width,
                 ))
                 record["error_y"] = error_y
 

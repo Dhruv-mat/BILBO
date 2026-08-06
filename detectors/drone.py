@@ -332,13 +332,12 @@ def is_armed():
 
 
 def get_relative_alt():
-    """Relative altitude in metres, or None if never reported."""
-    return _state["rel_alt"]
+    """Relative altitude in metres, or None if never reported.
 
-
-def get_altitude():
-    # Retained name for compatibility; now a cache read rather than a blocking
-    # recv that discarded other traffic.
+    Single accessor on purpose: a second `get_altitude()` alias used to exist
+    here, and two names for one value is a maintenance hazard -- someone edits
+    one and the other silently keeps the old behaviour.
+    """
     return _state["rel_alt"]
 
 

@@ -85,6 +85,12 @@ controller.reset()
 t_in = controller.update(cfg.YAW_DEADBAND_PX - 1, None, send=False)
 controller.reset()
 t_out = controller.update(cfg.YAW_DEADBAND_PX + 1, None, send=False)
+check("no box width falls back to the fixed deadband",
+      controller.deadband_px(None) == cfg.YAW_DEADBAND_PX)
+check("deadband scales with box width",
+      controller.deadband_px(300) > controller.deadband_px(80),
+      "300px box -> %.0f, 80px box -> %.0f"
+      % (controller.deadband_px(300), controller.deadband_px(80)))
 check("deadband edge is continuous (no 5 deg/s step)",
       abs(t_in["yaw_rate"]) < 1e-9 and abs(t_out["yaw_rate"]) < 0.5,
       "in=%.3f out=%.3f" % (t_in["yaw_rate"], t_out["yaw_rate"]))
@@ -223,16 +229,44 @@ locked, ex, ey = tracker.is_locked(centred, cfg.IMAGE_WIDTH_PX / 2.0)
 check("centred target is locked", locked and abs(ex) < 1 and abs(ey) < 1,
       "locked=%s ex=%.1f ey=%.1f" % (locked, ex, ey))
 
-off_h = FakePerson(cfg.IMAGE_WIDTH_PX / 2 + 40, cfg.LIDAR_BORESIGHT_ROW_PX, 40000)
+# Range gates scale with the target box: the beam lands on the person if it
+# falls anywhere across their body, and the box measures that width.
+wide = FakePerson(cfg.IMAGE_WIDTH_PX / 2, cfg.LIDAR_BORESIGHT_ROW_PX, 40000)
+narrow = FakePerson(cfg.IMAGE_WIDTH_PX / 2, cfg.LIDAR_BORESIGHT_ROW_PX, 2500)
+check("a wide (close) box gets a wider range gate than a narrow (far) one",
+      tracker.hgate_px(wide.width) > tracker.hgate_px(narrow.width),
+      "wide=%.0f px (w=%d)  narrow=%.0f px (w=%d)"
+      % (tracker.hgate_px(wide.width), wide.width,
+         tracker.hgate_px(narrow.width), narrow.width))
+check("range gate is clamped at both ends",
+      tracker.hgate_px(1) == cfg.LIDAR_HGATE_MIN_PX
+      and tracker.hgate_px(100000) == cfg.LIDAR_HGATE_MAX_PX)
+
+# THE INTERACTION THAT MUST NOT BREAK: if the yaw deadband were ever wider
+# than the range gate, yaw would stop correcting while the target sat outside
+# the beam, so no range would ever be read and forward velocity could never
+# engage. The drone would park with the person off to one side forever.
+worst = float("-inf")
+for box_w in range(1, 641):
+    db = controller.deadband_px(box_w)
+    hg = tracker.hgate_px(box_w)
+    worst = max(worst, db - hg)
+check("yaw deadband is ALWAYS inside the range gate, for every box width",
+      worst < 0, "worst (deadband - gate) = %+.1f px" % worst)
+
+# Off-axis by more than its own gate -> not locked.
+off_h = FakePerson(cfg.IMAGE_WIDTH_PX / 2 + 250,
+                   cfg.LIDAR_BORESIGHT_ROW_PX, 40000)
 locked, ex, ey = tracker.is_locked(off_h, cfg.IMAGE_WIDTH_PX / 2.0)
 check("horizontally off-axis target is NOT locked", not locked,
-      "ex=%.1f (gate %d)" % (ex, cfg.LIDAR_HGATE_PX))
+      "ex=%.1f gate=%.0f" % (ex, tracker.hgate_px(off_h.width)))
 
 off_v = FakePerson(cfg.IMAGE_WIDTH_PX / 2,
-                   cfg.LIDAR_BORESIGHT_ROW_PX + 200, 40000)
+                   cfg.LIDAR_BORESIGHT_ROW_PX + 300, 2500)
 locked, ex, ey = tracker.is_locked(off_v, cfg.IMAGE_WIDTH_PX / 2.0)
-check("vertical error is reported so the caller can gate on it",
-      abs(ey) > cfg.LIDAR_VGATE_PX, "ey=%.1f (gate %d)" % (ey, cfg.LIDAR_VGATE_PX))
+check("vertically off-axis target is NOT locked (beam over the head)",
+      not locked,
+      "ey=%.1f gate=%.0f" % (ey, tracker.vgate_px(off_v.height)))
 
 # Parallax: the unit bug made this ~100x too small.
 lc_far = tracker.get_lock_center(10000.0)
@@ -246,6 +280,51 @@ check("parallax shrinks with distance",
                                  offset_near))
 check("get_lock_center handles None distance",
       tracker.get_lock_center(None) == cfg.IMAGE_WIDTH_PX // 2)
+
+
+print("\n=== Tracker: self-heal after repeated association failures ===")
+
+# Reproduce the permanent-loss bug: lock on, then have the person reappear
+# far outside the association gate every frame. Without self-heal the stale
+# target position is compared against forever and the person is never
+# re-acquired -- which is exactly what bench.py exhibited.
+tracker.reset()
+tracker.select([FakePerson(100, 240, 40000)])
+check("locked on initially", tracker.has_target())
+
+far_away = FakePerson(600, 240, 40000)     # way beyond TRACK_GATE_PX
+results = [tracker.select([far_away]) for _ in range(cfg.TRACK_MAX_MISSES)]
+check("association initially rejects the displaced person",
+      results[0] is None)
+check("re-designates within TRACK_MAX_MISSES instead of losing them "
+      "forever",
+      results[-1] is not None,
+      "-> recovered on frame %s of %d"
+      % (next((i + 1 for i, r in enumerate(results) if r is not None),
+              None), cfg.TRACK_MAX_MISSES))
+check("miss counter resets after recovery", tracker.misses() == 0,
+      "-> %d" % tracker.misses())
+
+# An empty frame run must also clear the target so the next person is
+# designated fresh rather than compared against a stale position.
+tracker.reset()
+tracker.select([FakePerson(100, 240, 40000)])
+for _ in range(cfg.TRACK_MAX_MISSES):
+    tracker.select([])
+check("a long run of empty frames clears the target",
+      not tracker.has_target())
+picked = tracker.select([far_away])
+check("next detection is designated fresh", picked is far_away)
+
+# A brief single-frame gap must NOT drop the lock.
+tracker.reset()
+anchor = FakePerson(300, 240, 40000)
+tracker.select([anchor])
+tracker.select([])
+check("one dropped frame does not clear the target", tracker.has_target())
+picked = tracker.select([FakePerson(310, 245, 41000)])
+check("and the same person re-associates normally after it",
+      picked is not None and tracker.misses() == 0)
 
 
 print("\n=== LED: solid holds, writes only on change ===")

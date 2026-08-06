@@ -197,13 +197,29 @@ def intitalise():
     imx500.show_network_fw_progress_bar()
     picam2.start(config, show_preview=cfg.DEBUG_PREVIEW)
 
+    # REQUIRED when the network letterboxes its input. Without it the sensor ROI
+    # is never established, so convert_inference_coords() maps detections through
+    # the wrong scaling -- boxes land offset from the person and detections near
+    # the frame edges are effectively thrown away. Dropping this call was a
+    # regression against the working picamera2 example.
+    if intrinsics.preserve_aspect_ratio:
+        imx500.set_auto_aspect_ratio()
+
     # Detections are produced here, on picamera2's thread, so the flight loop
     # never blocks waiting for a frame.
     picam2.pre_callback = _on_frame
 
     frame_width, frame_height = config["main"]["size"]
-    _log.info("camera started %dx%d @ %s fps",
-              frame_width, frame_height, intrinsics.inference_rate)
+    # Log the intrinsics: bbox_order and bbox_normalization decide how
+    # parse_people() interprets the tensor, and getting either wrong produces
+    # transposed or mis-scaled boxes that look like "bad detection".
+    _log.info("camera %dx%d  inference_rate=%s  preserve_aspect_ratio=%s  "
+              "bbox_order=%s  bbox_normalization=%s",
+              frame_width, frame_height, intrinsics.inference_rate,
+              intrinsics.preserve_aspect_ratio, intrinsics.bbox_order,
+              intrinsics.bbox_normalization)
+    _log.info("detection filter: conf >= %.2f, box area >= %d px",
+              cfg.CONF_THRESHOLD, cfg.MIN_BOX_AREA_PX)
     return frame_width, frame_height
 
 

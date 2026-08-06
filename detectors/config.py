@@ -100,7 +100,15 @@ HEARTBEAT_TX_INTERVAL_S = 1.0
 # No HEARTBEAT from the Pixhawk for this long means the link is gone. Without
 # this check the code keeps computing PID outputs and sending setpoints into a
 # dead port while reading a cached "GUIDED" forever.
-LINK_TIMEOUT_S = 2.0
+#
+# 3.0 s, not 2.0: ArduPilot's default HEARTBEAT rate on a serial port is 1 Hz.
+# request_streams() asks for 2 Hz, but if SET_MESSAGE_INTERVAL is ignored (and
+# the SRn_* params are unset) only 1 Hz arrives -- so a 2.0 s timeout tolerated
+# just two missed heartbeats. A single telemetry hiccup would then latch
+# EMERGENCY and drop out of tracking until the pilot cycled the mode switch.
+# 3.0 s still detects a genuinely dead link well inside ArduPilot's own 3 s
+# guided timeout, at which point the vehicle brakes on its own regardless.
+LINK_TIMEOUT_S = 3.0
 RECONNECT_INTERVAL_S = 1.0
 
 # RC data older than this is treated as OFF. Fail closed.
@@ -148,18 +156,33 @@ LIDAR_MAX_JUMP_CM = 150
 LIDAR_JUMP_CONFIRMS = 2
 LIDAR_HEALTH_FRAMES = 5  # validated frames required at preflight
 
-# Horizontal gate for trusting a range reading. The beam is ~2 deg wide, so
-# this must be much tighter than YAW_DEADBAND_PX (~6.1 deg) -- a target 6 deg
-# off-axis is entirely outside the beam and the range would be of whatever is
-# behind them.
-LIDAR_HGATE_PX = 15
+# Gates for trusting a range reading, expressed as a FRACTION OF THE TARGET'S
+# BOUNDING BOX rather than a fixed pixel count.
+#
+# Why: the beam hits the person if it lands anywhere on their body, and their
+# body's angular width is exactly what the bounding box measures. A fixed 15 px
+# gate demanded the boresight be within 1.8 deg of the box centre, but a person
+# at 4 m is about 50 cm wide, which subtends ~7 deg or ~58 px -- so the beam
+# could be 25 px off centre and still be squarely on their chest. The fixed gate
+# was roughly 4x tighter than physics requires, which is why it read as
+# "demands the centre be almost perfect".
+#
+# Making it proportional also makes it distance-invariant for free: a distant
+# person has a narrow box and gets a tight gate, a close person has a wide box
+# and gets a generous one. That is the correct behaviour in both cases.
+LIDAR_HGATE_FRAC = 0.30          # of box width, from the boresight
+LIDAR_HGATE_MIN_PX = 18          # floor: never demand sub-degree precision
+LIDAR_HGATE_MAX_PX = 90          # ceiling: never let the beam wander off-body
 
-# Vertical gate. Without this, flying at altitude means the forward beam shoots
-# over the person's head while the camera still sees them fine.
-# CALIBRATE LIDAR_BORESIGHT_ROW_PX EMPIRICALLY: aim the beam at a known target
-# and note which image row it lands on. The default is only a starting guess.
+# Vertical: the beam must land on the torso, not over the head or between the
+# legs. A person's box is tall, so this can be generous.
+LIDAR_VGATE_FRAC = 0.25          # of box height, from the boresight row
+LIDAR_VGATE_MIN_PX = 20
+LIDAR_VGATE_MAX_PX = 120
+
+# CALIBRATE THIS EMPIRICALLY: aim the beam at a known target and note which
+# image row it lands on. The default is only a starting guess.
 LIDAR_BORESIGHT_ROW_PX = IMAGE_HEIGHT_PX // 2
-LIDAR_VGATE_PX = 40
 
 # Horizontal offset from camera optical axis to LiDAR, in CENTIMETRES.
 # The pre-review code divided 0.05 m by a centimetre distance, making the
@@ -173,20 +196,67 @@ LIDAR_OFFSET_SIGN = 1.0
 # --------------------------------------------------------------- tracker ----
 
 PERSON_CLASS = 0  # COCO index
-# 0.5 is low for a flight-critical gate.
-CONF_THRESHOLD = 0.65
-MIN_BOX_AREA_PX = 1200
+
+# Confidence floor. This was raised to 0.65 on the theory that a flight-critical
+# gate wants high confidence, which turned out to be the wrong trade: SSD
+# MobileNetV2 routinely scores a real, obvious person in the 0.45-0.65 band when
+# they are partly turned away, partly out of frame, or backlit, so 0.65 threw
+# away good detections and the target was lost constantly.
+#
+# Temporal consistency is a much better filter than a blunt threshold: a single
+# false positive cannot do anything, because association (TRACK_GATE_PX) and
+# confirmation (TARGET_CONFIRM_FRAMES / REACQUIRE_FRAMES) both have to agree
+# across several frames before the drone acts. So take the recall and let the
+# tracker reject the noise.
+CONF_THRESHOLD = 0.45
+
+# Reject specks. Lowered because a person half out of frame produces a small box
+# and was being filtered out at exactly the moment tracking mattered most.
+MIN_BOX_AREA_PX = 800
 
 # Nearest-neighbour association gate. A detection must be within this many
 # pixels of the previous target's centre and within TRACK_AREA_RATIO of its
 # area to be accepted as the same person. This is what stops a passer-by
 # walking between the drone and the target from stealing the lock.
-TRACK_GATE_PX = 140.0
+TRACK_GATE_PX = 160.0
 TRACK_AREA_RATIO = 2.5
+
+# After this many consecutive frames where the target cannot be re-associated,
+# forget it and re-designate from the largest current detection.
+#
+# Without this the tracker could latch permanently: a failed association leaves
+# _target pointing at a stale position, so every subsequent frame is compared
+# against where the person USED to be. Once they have moved further than
+# TRACK_GATE_PX from that stale point, they can never re-associate and the
+# target is lost until something calls tracker.reset(). main.py happened to do
+# that on entering SEARCHING, but bench.py did not -- which is why the bench
+# tool appeared to lose the target permanently.
+#
+# DERIVED FROM LOST_TRACK_S ON PURPOSE, not picked independently -- so it is
+# defined alongside LOST_TRACK_S in the state-machine section below, where both
+# values are visible together. See the note there.
 
 # ------------------------------------------------------------ controller ----
 
-YAW_DEADBAND_PX = 50.0
+# Yaw deadband, also expressed as a fraction of the target's box width, for the
+# same reason as the range gates: "close enough to stop correcting" depends on
+# how wide the target actually is.
+#
+# The fractions matter as much as their values. YAW_DEADBAND_FRAC must stay
+# BELOW LIDAR_HGATE_FRAC (0.18 < 0.30), and the deadband clamps must sit inside
+# the gate clamps (12 < 18 and 55 < 90). If the deadband were ever wider than
+# the range gate, yaw would stop correcting while the target sat outside the
+# beam -- the drone would park with the person off to one side, never centring
+# and never getting a range, so forward velocity could never engage. That
+# deadlock is a direct consequence of the two thresholds crossing, which is why
+# they are defined together here.
+YAW_DEADBAND_FRAC = 0.18
+YAW_DEADBAND_MIN_PX = 12.0
+YAW_DEADBAND_MAX_PX = 55.0
+
+# Fallback when no target width is available (used by the bench sign tool and
+# by any caller that does not pass a box width).
+YAW_DEADBAND_PX = 40.0
 
 # The yaw PID output is NEGATED. Derivation, verified against the physical
 # build and confirmed by tools/verify_yaw_sign.py:
@@ -258,6 +328,18 @@ SWITCH_MID_HIGH_US = 1700
 # a person turning away or briefly occluded, and the meaning silently changed
 # with frame rate.
 LOST_TRACK_S = 1.2
+
+# How long the tracker holds a target's identity through failed associations.
+# tracker.select() is called once per control tick, so this is a duration.
+#
+# It must NOT be shorter than LOST_TRACK_S. If it were, there would be a window
+# where the state machine still believed it was tracking while the tracker had
+# already dropped identity and would re-designate to whatever box is largest --
+# silently reintroducing the stranger-steals-the-lock failure that the
+# association gate exists to prevent. Holding identity for exactly as long as
+# the state machine holds the track closes that window; past it, SEARCHING
+# resets the tracker deliberately. tests/test_invariants.py asserts the ordering.
+TRACK_MAX_MISSES = int(LOST_TRACK_S * TICK_HZ)
 # Re-acquisition needs confirmation. A single frame re-locking meant one false
 # positive could flip-flop SEARCHING<->TRACKING forever, resetting the search
 # timer each time so RTL never fired.

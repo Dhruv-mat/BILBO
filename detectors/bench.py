@@ -82,7 +82,6 @@ def cmd_link(args):
     # absent the AI-enable switch can never be read, so this is the single most
     # useful thing on the page.
     seen = {}
-    heartbeats = 0
     start = time.monotonic()
     window = args.seconds
 
@@ -96,8 +95,6 @@ def cmd_link(args):
             seen["BAD_DATA"] = seen.get("BAD_DATA", 0) + 1
             continue
         seen[name] = seen.get(name, 0) + 1
-        if name == "HEARTBEAT":
-            heartbeats += 1
         drone._ingest(msg)
 
     elapsed = time.monotonic() - start
@@ -287,6 +284,19 @@ def cmd_leds(args):
     led.selftest()
 
     from state import DroneState
+    try:
+        return _walk_led_states(args, DroneState)
+    except KeyboardInterrupt:
+        print("\nstopped")
+        return 130
+    finally:
+        # Ctrl-C must not leave the strip lit.
+        led.shutdown()
+
+
+def _walk_led_states(args, DroneState):
+    import led
+
     order = [
         (DroneState.IDLE, "not in GUIDED / booting"),
         (DroneState.READY, "in GUIDED, armed, waiting for the ch%d switch"
@@ -329,7 +339,6 @@ def cmd_leds(args):
         led.render(DroneState.TRACKING)
         time.sleep(0.02)
 
-    led.shutdown()
     hr("DONE")
     print("Strip blanked. If any state showed the wrong colour, the mapping is")
     print("in led._STATE_APPEARANCE.")
@@ -342,7 +351,10 @@ _overlay = {
     "target": None, "persons": [], "error_x": 0.0, "error_y": 0.0,
     "distance": None, "strength": None, "locked": False, "gate_open": False,
     "yaw_rate": 0.0, "forward": 0.0, "reason": "-", "fps": 0.0,
-    "sending": False, "yaw_hint": "hold",
+    "sending": False, "yaw_hint": "hold", "status": "NONE", "misses": 0,
+    "deadband_px": cfg.YAW_DEADBAND_PX,
+    "hgate_px": cfg.LIDAR_HGATE_MIN_PX,
+    "vgate_px": cfg.LIDAR_VGATE_MIN_PX,
 }
 
 GREY = (140, 140, 140)
@@ -367,7 +379,7 @@ def _draw(request):
         # Reference geometry.
         cv2.line(img, (cx, 0), (cx, h), WHITE, 1)
         for sign in (-1, 1):
-            db = int(cx + sign * cfg.YAW_DEADBAND_PX)
+            db = int(cx + sign * o["deadband_px"])
             cv2.line(img, (db, 0), (db, h), GREY, 1)
             al = int(cx + sign * cfg.FORWARD_ALIGN_LIMIT_DEG
                      * cfg.PIXELS_PER_DEGREE)
@@ -378,8 +390,14 @@ def _draw(request):
         row = int(cfg.LIDAR_BORESIGHT_ROW_PX)
         cv2.line(img, (0, row), (w, row), CYAN, 1)
         for sign in (-1, 1):
-            g = row + sign * int(cfg.LIDAR_VGATE_PX)
+            g = row + sign * int(o["vgate_px"])
             cv2.line(img, (0, g), (w, g), (90, 90, 0), 1)
+        # Horizontal range gate, sized to the current target box.
+        for sign in (-1, 1):
+            hg = int(cx + sign * o["hgate_px"])
+            if 0 <= hg < w:
+                cv2.line(img, (hg, max(0, row - 40)),
+                         (hg, min(h, row + 40)), CYAN, 1)
 
         # Every detection, thin. The chosen target, thick.
         for p in o["persons"]:
@@ -397,6 +415,11 @@ def _draw(request):
         lines = [
             "fps %.1f   %s" % (o["fps"],
                                "SENDING" if o["sending"] else "not sending"),
+            "detections %-2d  target %s  misses %d"
+            % (len(o["persons"]), o["status"], o["misses"]),
+            "conf>=%.2f  deadband %.0f  hgate %.0f  vgate %.0f"
+            % (cfg.CONF_THRESHOLD, o["deadband_px"], o["hgate_px"],
+               o["vgate_px"]),
             "error_x %+7.1f px  (%+.1f deg)"
             % (o["error_x"], o["error_x"] / cfg.PIXELS_PER_DEGREE),
             "error_y %+7.1f px" % o["error_y"],
@@ -420,6 +443,19 @@ def _draw(request):
 def cmd_track(args):
     """Live tracking preview with the computed commands."""
     import camera
+
+    # Runtime tuning. camera.py and tracker.py read these from cfg on every
+    # call, so mutating them here takes effect immediately and nothing has
+    # to be edited on disk to try a value.
+    if args.conf is not None:
+        cfg.CONF_THRESHOLD = args.conf
+    if args.min_area is not None:
+        cfg.MIN_BOX_AREA_PX = args.min_area
+    if args.hgate_frac is not None:
+        cfg.LIDAR_HGATE_FRAC = args.hgate_frac
+    print("filter: conf>=%.2f  min_area=%d  hgate_frac=%.2f"
+          % (cfg.CONF_THRESHOLD, cfg.MIN_BOX_AREA_PX,
+             cfg.LIDAR_HGATE_FRAC))
 
     if args.send:
         print("\n*** --send is ENABLED: real setpoints will be sent. ***")
@@ -484,7 +520,8 @@ def cmd_track(args):
                 lock_center = tracker.get_lock_center(dist_for_center)
                 locked, error_x, error_y = tracker.is_locked(target,
                                                              lock_center)
-                gate_open = locked and abs(error_y) < cfg.LIDAR_VGATE_PX
+                # is_locked() already covers both axes, sized to the target box.
+                gate_open = locked
                 if gate_open:
                     reading = lidar.read_data()
                     if reading is not None:
@@ -504,6 +541,8 @@ def cmd_track(args):
                 yaw_only=args.yaw_only,
                 send=bool(args.send and drone.is_connected()),
                 now=now,
+                target_width_px=(target.width if target is not None
+                                 else None),
             )
 
             frames += 1
@@ -512,9 +551,29 @@ def cmd_track(args):
                 frames = 0
                 fps_t = now
 
+            if target is not None:
+                status = "LOCKED" if gate_open else "tracked"
+            elif persons:
+                # Detector saw people; association rejected them all.
+                status = "ASSOC-FAIL"
+            elif fresh:
+                status = "NO-DETECTION"
+            else:
+                status = "VISION-STALE"
+
             _overlay.update({
                 "target": target,
                 "persons": persons or [],
+                "status": status,
+                "misses": tracker.misses(),
+                "deadband_px": telemetry.get("deadband_px",
+                                             cfg.YAW_DEADBAND_PX),
+                "hgate_px": (tracker.hgate_px(target.width)
+                             if target is not None
+                             else cfg.LIDAR_HGATE_MIN_PX),
+                "vgate_px": (tracker.vgate_px(target.height)
+                             if target is not None
+                             else cfg.LIDAR_VGATE_MIN_PX),
                 "error_x": error_x,
                 "error_y": error_y,
                 "distance": distance,
@@ -530,9 +589,10 @@ def cmd_track(args):
             })
 
             if args.no_preview:
-                print("\rerr_x %+7.1f  err_y %+7.1f  lidar %s  gate %-4s  "
-                      "yaw %+6.1f  fwd %+5.2f  %s"
-                      % (error_x, error_y,
+                print("\r%-12s n=%-2d miss=%-2d err_x %+7.1f err_y %+7.1f  "
+                      "lidar %s gate %-4s yaw %+6.1f fwd %+5.2f  %s"
+                      % (status, len(persons or []), tracker.misses(),
+                         error_x, error_y,
                          "----" if distance is None else "%4d" % distance,
                          "OPEN" if gate_open else "shut",
                          telemetry["yaw_rate"], telemetry["forward"],
@@ -723,6 +783,12 @@ def main(argv=None):
                    help="force forward velocity to zero")
     p.add_argument("--no-preview", action="store_true",
                    help="text only, for use over SSH with no display")
+    p.add_argument("--conf", type=float,
+                   help="override CONF_THRESHOLD (lower = more detections)")
+    p.add_argument("--min-area", type=int,
+                   help="override MIN_BOX_AREA_PX")
+    p.add_argument("--hgate-frac", type=float,
+                   help="override LIDAR_HGATE_FRAC (range gate width)")
     p.set_defaults(func=cmd_track)
 
     p = sub.add_parser("motors", help="spin motors briefly, PROPS OFF")
