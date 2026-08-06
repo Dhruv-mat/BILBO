@@ -68,6 +68,14 @@ def _resolve_device():
     guarantee holds, while zero or several is a hard failure rather than a
     guess at which adapter is the flight controller.
     """
+    # Network connection strings (SITL) are not filesystem paths. Passing
+    # them straight through lets the whole stack run against a simulated
+    # ArduPilot -- the only way to exercise real mode changes, GUIDED
+    # acceptance and RTL without risking an aircraft.
+    if "://" in cfg.MAVLINK_DEVICE or cfg.MAVLINK_DEVICE.startswith(
+            ("tcp:", "udp:", "udpin:", "udpout:")):
+        return cfg.MAVLINK_DEVICE
+
     if os.path.exists(cfg.MAVLINK_DEVICE):
         return cfg.MAVLINK_DEVICE
 

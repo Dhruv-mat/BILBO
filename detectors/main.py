@@ -27,9 +27,9 @@ from state import DroneState
 
 _log = logging.getLogger("bilbo")
 
-# RC enable switch positions.
-OFF, YAW_ONLY, FULL = 0, 1, 2
-_ENABLE_NAMES = {OFF: "OFF", YAW_ONLY: "YAW_ONLY", FULL: "FULL"}
+# RC enable switch positions. Two-position: off, or full tracking.
+OFF, ON = 0, 1
+_ENABLE_NAMES = {OFF: "OFF", ON: "ON"}
 
 # ------------------------------------------------------------------ state ----
 
@@ -259,15 +259,15 @@ def distance_age(now):
 
 
 def read_enable(now):
-    """Decode the 3-position AI switch. Stale or missing RC reads as OFF."""
+    """Decode the AI enable switch. Stale or missing RC reads as OFF.
+
+    Fail-closed on purpose: losing RC telemetry disables autonomy rather
+    than leaving it latched on.
+    """
     raw = drone.get_channel(cfg.CH_ENABLE)
     if raw is None or drone.rc_age() > cfg.RC_STALE_S:
         return OFF
-    if raw < cfg.SWITCH_MID_LOW_US:
-        return OFF
-    if raw < cfg.SWITCH_MID_HIGH_US:
-        return YAW_ONLY
-    return FULL
+    return ON if raw >= cfg.SWITCH_ON_US else OFF
 
 
 # ------------------------------------------------------------ transitions ----
@@ -282,7 +282,7 @@ def request_mode(mode, timeout=1.5, retries=1):
     _slow_tick = True
     if drone.set_mode(mode, timeout=timeout, retries=retries):
         self_commanded_mode = mode
-        return Tru
+        return True
     return False
 
 
@@ -581,8 +581,7 @@ def run_tick(now, tick_duration):
                     dist = distance_or_none(now)
 
                 record.update(controller.update(
-                    error_x, dist, yaw_only=(enable == YAW_ONLY),
-                    target_width_px=target.width,
+                    error_x, dist, target_width_px=target.width,
                 ))
                 record["error_y"] = error_y
 

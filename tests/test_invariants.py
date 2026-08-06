@@ -110,6 +110,24 @@ check("minimum safe distance is inside the target standoff, so the back-off "
       cfg.MIN_SAFE_DISTANCE_CM < cfg.TARGET_DISTANCE_CM,
       "%.0f < %.0f cm" % (cfg.MIN_SAFE_DISTANCE_CM, cfg.TARGET_DISTANCE_CM))
 
+# If the do-nothing band reached below the safety floor, the PID would
+# report "close enough" inside the distance the floor says to retreat
+# from. The floor still wins (it is a min()), but the two would be
+# openly contradicting each other, which is how tuning accidents start.
+band_low = cfg.TARGET_DISTANCE_CM - cfg.DIST_DEADBAND_CM
+check("the distance deadband stays clear of the safety floor",
+      band_low > cfg.MIN_SAFE_DISTANCE_CM,
+      "band bottom %.0f cm > floor %.0f cm"
+      % (band_low, cfg.MIN_SAFE_DISTANCE_CM))
+
+check("the distance deadband is a usable fraction of the standoff -- big "
+      "enough to stop micro-corrections, small enough to still hold "
+      "station",
+      0.02 < cfg.DIST_DEADBAND_CM / cfg.TARGET_DISTANCE_CM < 0.25,
+      "+/-%.0f cm on %.0f cm = %.0f%%"
+      % (cfg.DIST_DEADBAND_CM, cfg.TARGET_DISTANCE_CM,
+         100.0 * cfg.DIST_DEADBAND_CM / cfg.TARGET_DISTANCE_CM))
+
 check("target standoff is inside the LiDAR's accepted range",
       cfg.LIDAR_MIN_CM < cfg.TARGET_DISTANCE_CM < cfg.LIDAR_MAX_CM,
       "%d < %.0f < %d" % (cfg.LIDAR_MIN_CM, cfg.TARGET_DISTANCE_CM,
@@ -176,9 +194,9 @@ check("LiDAR boresight row is inside the image",
 check("pixels-per-degree is derived from the image width, not hardcoded",
       abs(cfg.PIXELS_PER_DEGREE
           - cfg.IMAGE_WIDTH_PX / cfg.CAMERA_FOV_DEG) < 1e-9)
-check("switch bands are ordered and inside normal RC pulse range",
-      1000 < cfg.SWITCH_MID_LOW_US < cfg.SWITCH_MID_HIGH_US < 2000,
-      "%d < %d" % (cfg.SWITCH_MID_LOW_US, cfg.SWITCH_MID_HIGH_US))
+check("switch threshold sits inside the normal RC pulse range, clear of both endpoints",
+      1200 < cfg.SWITCH_ON_US < 1800,
+      "%d us" % cfg.SWITCH_ON_US)
 check("RC staleness tolerance spans several ticks but is well under a second "
       "of real lag",
       cfg.TICK_PERIOD_S * 2 < cfg.RC_STALE_S <= 2.0,

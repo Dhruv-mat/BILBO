@@ -289,8 +289,29 @@ YAW_KD = 0.0
 # an inverted loop makes a runaway faster.
 MAX_YAW_RATE_DEG_S = 50.0
 
-TARGET_DISTANCE_CM = 400.0
-DIST_KP = 0.006  # saturates near 165 cm of error
+# 2 m standoff. Chosen for detection quality: the further away the person
+# is, the smaller their bounding box and the less reliable the IMX500
+# detection, so a closer standoff directly improves tracking.
+#
+# The trade is real and worth stating: 2 m is close to a person with
+# propellers turning. MIN_SAFE_DISTANCE_CM below is the hard floor that
+# backs the aircraft off regardless of what the tracker wants, and it is
+# the only obstacle protection the airframe has. Do not raise the floor
+# above the deadband edge -- see the invariant note there.
+TARGET_DISTANCE_CM = 200.0
+
+# Distance deadband: anything within +/- this of the standoff counts as
+# "close enough" and commands nothing. Without it the controller chases
+# every centimetre of LiDAR noise, producing constant micro-corrections
+# that waste battery, look twitchy and shake the camera -- which then
+# degrades detection, the very thing the closer standoff was for.
+#
+# 20 cm means 180-220 cm is the do-nothing band. It MUST stay clear of
+# MIN_SAFE_DISTANCE_CM: if the band reached below the floor, the PID
+# would say "close enough" inside the distance the floor says to retreat
+# from. tests/test_invariants.py asserts the separation.
+DIST_DEADBAND_CM = 20.0
+DIST_KP = 0.010  # saturates near 100 cm of error past the deadband
 DIST_KI = 0.0
 DIST_KD = 0.0
 MAX_FORWARD_SPEED_MS = 1.0
@@ -319,10 +340,15 @@ HARD_MAX_YAW_RATE_DEG_S = 60.0
 # --------------------------------------------------- state machine / RC -----
 
 CH_ENABLE = 8
-# 3-position: OFF / YAW_ONLY / FULL. YAW_ONLY validates the yaw loop in the air
-# with zero translation risk, which matters because the yaw sign was inverted.
-SWITCH_MID_LOW_US = 1300
-SWITCH_MID_HIGH_US = 1700
+# 2-position: OFF below the threshold, full tracking above it.
+#
+# There was previously a middle YAW_ONLY position that suppressed forward
+# velocity, as a graduated first-flight stage. It was removed by request in
+# favour of full control whenever the switch is on. The equivalent check now
+# happens on the ground instead: tools/verify_yaw_sign.py and
+# `bench.py track --yaw-only`, both props-off. Do those before the first
+# flight -- the in-air stage that used to catch an inverted yaw sign is gone.
+SWITCH_ON_US = 1500
 
 # Time-based, not frame-based: 6 frames at ~30 fps was 0.2 s, far too short for
 # a person turning away or briefly occluded, and the meaning silently changed

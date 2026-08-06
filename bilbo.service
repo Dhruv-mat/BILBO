@@ -1,0 +1,56 @@
+# systemd unit for BILBO autostart.
+#
+#   sudo cp bilbo.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable bilbo          # start on every boot
+#   sudo systemctl start bilbo           # start now
+#
+#   systemctl status bilbo               # is it running?
+#   journalctl -u bilbo -f               # live log
+#   sudo systemctl stop bilbo            # stop now
+#   sudo systemctl disable bilbo         # stop starting on boot
+#
+# EDIT User/WorkingDirectory/ExecStart below to match your username and path.
+# The example assumes user `dhr` and the repo at /home/dhr/BILBO.
+
+[Unit]
+Description=BILBO autonomous person-tracking loop
+# The camera and serial ports need udev to have settled, or the by-id path and
+# /dev/ttyAMA0 may not exist yet when we start.
+After=multi-user.target systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+User=dhr
+Group=dhr
+# dialout = serial ports, spi = the LED strip, video = the camera.
+SupplementaryGroups=dialout spi video gpio
+
+WorkingDirectory=/home/dhr/BILBO/detectors
+ExecStart=/home/dhr/bilbo-venv/bin/python /home/dhr/BILBO/detectors/main.py
+
+# Give udev a moment after boot before grabbing the serial ports.
+ExecStartPre=/bin/sleep 5
+
+# Restart on crash, but NOT if it exits cleanly (preflight failure returns 1,
+# and we do want that retried -- a Pixhawk still booting is a transient).
+Restart=on-failure
+RestartSec=10
+# If it fails 5 times in 5 minutes, stop trying. Something is genuinely wrong
+# and endlessly relaunching a broken flight program is worse than not running.
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# The program logs to ~/bilbo-logs itself. journald only gets startup errors,
+# because stdout at loop rate is blocking I/O -- see config.DEBUG_CONSOLE.
+StandardOutput=journal
+StandardError=journal
+
+# SIGTERM triggers the clean shutdown path: zero velocity, LEDs blanked, ports
+# closed. Give it time to finish before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -137,16 +137,50 @@ def drive(error_x, distance_cm, ticks=60, yaw_only=False, t0=1000.0):
     return telemetry
 
 # Aligned and far: forward must ramp POSITIVE (toward the target).
-t = drive(0.0, 600.0)
+t = drive(0.0, cfg.TARGET_DISTANCE_CM * 3.0)
 check("aligned + far -> forward positive (approach)", t["forward"] > 0.5,
       "fwd=%.3f gate=%s" % (t["forward"], t["gate"]))
 check("forward clamped to MAX_FORWARD_SPEED",
       t["forward"] <= cfg.MAX_FORWARD_SPEED_MS + 1e-9, "fwd=%.3f" % t["forward"])
 
-# Aligned and too close: must retreat.
-t = drive(0.0, 200.0)
-check("aligned + closer than target -> forward negative (retreat)",
-      t["forward"] < -0.01, "fwd=%.3f" % t["forward"])
+# Distances derived from config so these cannot go stale when the
+# standoff is retuned. Just inside the deadband's lower edge, but
+# clear of the safety floor, so it is the PID retreating rather than
+# the forced back-off.
+too_close = cfg.TARGET_DISTANCE_CM - cfg.DIST_DEADBAND_CM - 20.0
+too_far = cfg.TARGET_DISTANCE_CM + cfg.DIST_DEADBAND_CM + 60.0
+assert too_close > cfg.MIN_SAFE_DISTANCE_CM
+
+t = drive(0.0, too_close)
+check("aligned + closer than the band -> forward negative (retreat)",
+      t["forward"] < -0.01,
+      "at %.0f cm fwd=%.3f" % (too_close, t["forward"]))
+
+# The deadband itself: no output, and no micro-corrections.
+for probe in (cfg.TARGET_DISTANCE_CM,
+              cfg.TARGET_DISTANCE_CM - cfg.DIST_DEADBAND_CM + 1.0,
+              cfg.TARGET_DISTANCE_CM + cfg.DIST_DEADBAND_CM - 1.0):
+    t = drive(0.0, probe)
+    check("inside the distance deadband -> zero forward (%.0f cm)"
+          % probe,
+          abs(t["forward"]) < 1e-6 and t["in_dist_band"],
+          "fwd=%.4f in_band=%s" % (t["forward"], t["in_dist_band"]))
+
+# Continuous across both edges: no step from zero to a finite command.
+just_out_near = drive(0.0, cfg.TARGET_DISTANCE_CM
+                      - cfg.DIST_DEADBAND_CM - 1.0)
+just_out_far = drive(0.0, cfg.TARGET_DISTANCE_CM
+                     + cfg.DIST_DEADBAND_CM + 1.0)
+check("distance deadband edges are continuous, not a step",
+      abs(just_out_near["forward"]) < 0.05
+      and abs(just_out_far["forward"]) < 0.05,
+      "near edge %+.4f, far edge %+.4f"
+      % (just_out_near["forward"], just_out_far["forward"]))
+
+t = drive(0.0, too_far)
+check("aligned + beyond the band -> forward positive (approach)",
+      t["forward"] > 0.01,
+      "at %.0f cm fwd=%.3f" % (too_far, t["forward"]))
 
 # Inside the hard floor: retreat regardless of what the tracker wants.
 t = drive(0.0, 100.0)

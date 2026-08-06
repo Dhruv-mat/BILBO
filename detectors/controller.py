@@ -24,11 +24,21 @@ _log = logging.getLogger(__name__)
 
 # output_limits are set in the constructor rather than assigned afterwards so
 # integral clamping is armed from the very first sample.
+#
+# sample_time=None is EXPLICIT and load-bearing. simple_pid defaults it to 0.01,
+# meaning any call less than 10 ms after the previous one silently returns the
+# previous output instead of computing a new one. At the 15 Hz flight tick that
+# never triggers, so it is invisible in flight -- but it is a hidden second rate
+# limiter underneath the one main.py already enforces, it makes the controller
+# untestable in a tight loop (every call after the first returns a stale value),
+# and it would silently freeze the controller if TICK_HZ were ever raised above
+# 100. Rate control belongs in one place: the control loop.
 yaw_pid = PID(
     Kp=cfg.YAW_KP,
     Ki=cfg.YAW_KI,
     Kd=cfg.YAW_KD,
     setpoint=0.0,
+    sample_time=None,
     output_limits=(-cfg.MAX_YAW_RATE_DEG_S, cfg.MAX_YAW_RATE_DEG_S),
 )
 
@@ -37,6 +47,7 @@ distance_pid = PID(
     Ki=cfg.DIST_KI,
     Kd=cfg.DIST_KD,
     setpoint=cfg.TARGET_DISTANCE_CM,
+    sample_time=None,
     output_limits=(-cfg.MAX_FORWARD_SPEED_MS, cfg.MAX_FORWARD_SPEED_MS),
 )
 
@@ -82,6 +93,23 @@ def deadband_px(target_width_px=None):
                min(cfg.YAW_DEADBAND_MAX_PX, scaled))
 
 
+def _deadband_distance(distance_cm):
+    """Shrink the range error by the distance deadband.
+
+    Returns a distance to feed the PID, not an error, so the PID keeps
+    its own setpoint. Inside the band it returns exactly the setpoint, so
+    the output is zero; outside it, the error is reduced by the deadband
+    width. Shrinking rather than zeroing keeps the output continuous
+    across the band edge -- zeroing would step from 0 to Kp*deadband the
+    moment the edge is crossed, and the drone would hunt across it.
+    """
+    error = distance_cm - cfg.TARGET_DISTANCE_CM
+    if abs(error) <= cfg.DIST_DEADBAND_CM:
+        return cfg.TARGET_DISTANCE_CM
+    return (cfg.TARGET_DISTANCE_CM + error
+            - math.copysign(cfg.DIST_DEADBAND_CM, error))
+
+
 def _deadband_error(error_x, deadband):
     """Shrink the error by the deadband instead of zeroing the output.
 
@@ -110,7 +138,13 @@ def _slew(desired, now):
     dt = max(0.0, now - _last_slew_time)
     _last_slew_time = now
 
-    if abs(desired) <= abs(_last_forward):
+    # Immediate only when easing off on the SAME side of zero. The same-sign
+    # test matters: comparing magnitudes alone let a reversal skip the limiter
+    # entirely, because going from -1.0 to +1.0 passes `abs(desired) <=
+    # abs(last)` and would be applied in a single tick -- a 2 m/s step, the
+    # exact lurch this function exists to prevent. A reversal has to ramp
+    # through zero like any other increase.
+    if desired * _last_forward >= 0.0 and abs(desired) <= abs(_last_forward):
         _last_forward = desired
         return desired
 
@@ -149,8 +183,12 @@ def update(error_x, distance_cm, yaw_only=False, send=True, now=None,
 
     # ------------------------------------------------------- forward -------
     bearing_deg = abs(error_x) / cfg.PIXELS_PER_DEGREE
+    # Feed the deadbanded distance so the PID sees zero error inside the
+    # band. When there is no reading at all, feed the setpoint itself so
+    # the PID stays warm at zero output rather than being skipped.
     raw_pid_out = distance_pid(
-        distance_cm if distance_cm is not None else cfg.TARGET_DISTANCE_CM
+        _deadband_distance(distance_cm) if distance_cm is not None
+        else cfg.TARGET_DISTANCE_CM
     )
 
     gate_reason = None
@@ -198,6 +236,9 @@ def update(error_x, distance_cm, yaw_only=False, send=True, now=None,
         "gate": gate_reason or "open",
         "backing_off": backing_off,
         "deadband_px": deadband,
+        "in_dist_band": (distance_cm is not None and
+                         abs(distance_cm - cfg.TARGET_DISTANCE_CM)
+                         <= cfg.DIST_DEADBAND_CM),
     }
 
     if send:
@@ -220,4 +261,5 @@ def hold(send=True):
         "gate": "hold",
         "backing_off": False,
         "deadband_px": cfg.YAW_DEADBAND_PX,
+        "in_dist_band": False,
     }

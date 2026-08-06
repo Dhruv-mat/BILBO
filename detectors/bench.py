@@ -177,8 +177,8 @@ def cmd_switch(args):
     connect_or_die()
     print("Move the ch%d switch through all positions. Ctrl-C to stop.\n"
           % cfg.CH_ENABLE)
-    print("  bands: OFF < %d <= YAW_ONLY < %d <= FULL"
-          % (cfg.SWITCH_MID_LOW_US, cfg.SWITCH_MID_HIGH_US))
+    print("  threshold: OFF below %d us, ON at or above it"
+          % cfg.SWITCH_ON_US)
     try:
         while True:
             drone.poll()
@@ -188,12 +188,10 @@ def cmd_switch(args):
                 label = "NO RC DATA"
             elif age > cfg.RC_STALE_S:
                 label = "STALE (%.1fs) -> treated as OFF" % age
-            elif raw < cfg.SWITCH_MID_LOW_US:
+            elif raw < cfg.SWITCH_ON_US:
                 label = "OFF"
-            elif raw < cfg.SWITCH_MID_HIGH_US:
-                label = "YAW_ONLY"
             else:
-                label = "FULL"
+                label = "ON (full tracking)"
             print("\r  ch%d = %5s us   %-34s   mode=%-10s armed=%-5s"
                   % (cfg.CH_ENABLE, raw, label, drone.get_mode(),
                      drone.is_armed()), end="", flush=True)
@@ -423,9 +421,10 @@ def _draw(request):
             "error_x %+7.1f px  (%+.1f deg)"
             % (o["error_x"], o["error_x"] / cfg.PIXELS_PER_DEGREE),
             "error_y %+7.1f px" % o["error_y"],
-            "lidar   %s   strength %s"
+            "lidar   %s   want %d cm   strength %s"
             % ("----" if o["distance"] is None else "%4d cm" % o["distance"],
-               o["strength"]),
+               cfg.TARGET_DISTANCE_CM, o["strength"]),
+            "  (closer than want -> forward NEGATIVE = back off)",
             "lock    %s   range gate %s"
             % ("YES" if o["locked"] else "no ",
                "OPEN" if o["gate_open"] else "shut"),
