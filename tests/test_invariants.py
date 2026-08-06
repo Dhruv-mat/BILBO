@@ -103,6 +103,35 @@ check("forward-alignment limit is inside the camera's half field of view, so "
       cfg.FORWARD_ALIGN_LIMIT_DEG < cfg.CAMERA_FOV_DEG / 2,
       "%.1f < %.1f" % (cfg.FORWARD_ALIGN_LIMIT_DEG, cfg.CAMERA_FOV_DEG / 2))
 
+print("\n=== Automatic takeoff ===")
+
+# The engagement floor must sit BELOW the altitude the takeoff actually
+# delivers, or the gate would reject the very climb it just commanded and
+# baro noise would flip tracking on and off at the top of the climb.
+completes_at = cfg.TAKEOFF_ALT_M - cfg.TAKEOFF_ALT_TOLERANCE_M
+check("takeoff completion altitude is above the tracking floor",
+      completes_at > cfg.MIN_TRACK_ALT_M,
+      "%.2f m > %.2f m" % (completes_at, cfg.MIN_TRACK_ALT_M))
+
+check("takeoff target is above the on-the-ground threshold",
+      cfg.TAKEOFF_ALT_M > cfg.TAKEOFF_MAX_START_ALT_M,
+      "%.2f m > %.2f m" % (cfg.TAKEOFF_ALT_M,
+                           cfg.TAKEOFF_MAX_START_ALT_M))
+
+# A 1.83 m person plus baro drift: below this the propeller disc can sit
+# at or under head height.
+check("takeoff altitude clears a standing adult with some margin",
+      cfg.TAKEOFF_ALT_M >= 2.0,
+      "%.2f m (>= 2.0 m; 3.0 m+ is materially safer given +/-0.5 m baro drift)"
+      % cfg.TAKEOFF_ALT_M)
+
+check("takeoff timeout allows a realistic climb rate",
+      cfg.TAKEOFF_TIMEOUT_S > cfg.TAKEOFF_ALT_M / 0.5,
+      "%.0f s for %.1f m (needs > %.0f s at 0.5 m/s)"
+      % (cfg.TAKEOFF_TIMEOUT_S, cfg.TAKEOFF_ALT_M,
+         cfg.TAKEOFF_ALT_M / 0.5))
+
+
 print("\n=== Distances and speeds ===")
 
 check("minimum safe distance is inside the target standoff, so the back-off "

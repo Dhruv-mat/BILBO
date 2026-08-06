@@ -590,6 +590,67 @@ def move(forward_speed=0.0, right_speed=0.0, down_speed=0.0, yaw_rate=0.0,
     return True
 
 
+def takeoff(altitude_m, timeout=2.0):
+    """Command an automatic takeoff to `altitude_m` above the launch point.
+
+    Returns True only if the Pixhawk ACKs the command. The vehicle must
+    already be ARMED and in GUIDED -- this never arms anything.
+
+    The caller must then send NO velocity setpoints until the climb
+    finishes. ArduPilot's guided takeoff is an altitude controller, and a
+    SET_POSITION_TARGET arriving mid-climb switches the guided submode and
+    abandons it -- the aircraft would stop climbing wherever it happened
+    to be.
+    """
+    if not is_connected():
+        _log.error("takeoff: not connected")
+        return False
+    if not _state["armed"]:
+        _log.error("takeoff: refused, vehicle is not armed")
+        return False
+
+    try:
+        master.mav.command_long_send(
+            master.target_system, master.target_component,
+            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0,
+            0.0,            # param1 pitch, fixed-wing only
+            0.0, 0.0,
+            0.0,            # param4 yaw, 0 = keep current heading
+            0.0, 0.0,       # param5/6 lat/lon, unused for copter
+            float(altitude_m),   # param7 altitude, metres above home
+        )
+    except Exception:
+        _log.exception("takeoff command send failed")
+        return False
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            msg = master.recv_match(blocking=True, timeout=0.25)
+        except Exception:
+            _log.exception("recv during takeoff failed")
+            break
+        if msg is None:
+            continue
+        if msg.get_type() == "COMMAND_ACK" and \
+                msg.command == mavutil.mavlink.MAV_CMD_NAV_TAKEOFF:
+            ok = msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED
+            _log.log(logging.INFO if ok else logging.ERROR,
+                     "takeoff to %.1f m %s (result=%d)",
+                     altitude_m, "ACCEPTED" if ok else "REJECTED",
+                     msg.result)
+            return ok
+        if msg.get_type() != "BAD_DATA":
+            try:
+                _ingest(msg)
+            except Exception:
+                _log.exception("ingest during takeoff failed")
+
+    _log.error("takeoff to %.1f m: no COMMAND_ACK within %.1fs",
+               altitude_m, timeout)
+    return False
+
+
 def hover(force=False):
     """Explicit zero velocity, zero yaw rate."""
     return move(0.0, 0.0, 0.0, 0.0, force=force)

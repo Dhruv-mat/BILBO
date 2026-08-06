@@ -16,6 +16,7 @@ import config as cfg
 
 sent = []           # every setpoint that reached "the wire"
 mode_requests = []
+takeoff_requests = []
 
 
 class FakeDrone(types.ModuleType):
@@ -31,9 +32,12 @@ class FakeDrone(types.ModuleType):
         self._link_age = 0.0
         self._rc_age = 0.0
         self.set_mode_ok = True
+        self.takeoff_ok = True
+        self.climbing_to = None
         self.connected = True
         del sent[:]
         del mode_requests[:]
+        del takeoff_requests[:]
 
     # --- link
     def poll(self, max_msgs=200):
@@ -74,6 +78,12 @@ class FakeDrone(types.ModuleType):
         return self.rc.get(ch)
 
     # --- commands
+    def takeoff(self, altitude_m, timeout=2.0):
+        takeoff_requests.append(altitude_m)
+        if self.takeoff_ok:
+            self.climbing_to = altitude_m
+        return self.takeoff_ok
+
     def set_mode(self, mode, timeout=1.5, retries=1):
         mode_requests.append(mode)
         if self.set_mode_ok:
@@ -130,6 +140,11 @@ import controller      # noqa: E402
 from state import DroneState  # noqa: E402
 
 tracker.configure(cfg.IMAGE_WIDTH_PX, cfg.IMAGE_HEIGHT_PX)
+
+# The bulk of this file exercises the MANUAL-takeoff path (pilot flies
+# the climb, engagement requires altitude). Automatic takeoff gets its
+# own section at the end, which toggles the flag explicitly.
+cfg.AUTO_TAKEOFF = False
 
 CENTRED = FakePerson(cfg.IMAGE_WIDTH_PX / 2, cfg.LIDAR_BORESIGHT_ROW_PX, 40000)
 CLOCK = [1000.0]
@@ -416,6 +431,152 @@ main.track_started = CLOCK[0] - cfg.MAX_TRACK_DURATION_S - 1.0
 tick(1, persons=[CENTRED])
 check("MAX_TRACK_DURATION cap -> RTL", main.state == DroneState.RTL,
       "-> %s" % main.state.name)
+
+
+print("\n=== Merged GUIDED + AI switch (CH_ENABLE = 9) ===")
+
+# ch9 drives BOTH the ArduPilot GUIDED aux function and the Pi's enable.
+# Flipping it up changes two things at once, and the mode change only
+# reaches the Pi on the NEXT heartbeat. The tick where the switch rises
+# therefore still reads the old mode. If the edge were latched after the
+# mode gate, that tick would take the pilot-control path and swallow it,
+# and the aircraft would never engage no matter how long you waited.
+fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+fake_drone.alt = 5.0
+tick(2)
+
+# The switch rises while the vehicle still reports the previous mode.
+fake_drone.mode = "LOITER"
+fake_drone.rc[cfg.CH_ENABLE] = 1900
+tick(1)
+check("the edge survives a tick where the mode has not caught up yet",
+      main.engage_armed is True,
+      "-> engage_armed=%r" % main.engage_armed)
+
+# Now GUIDED arrives and engagement proceeds.
+fake_drone.mode = "GUIDED"
+tick(cfg.TARGET_CONFIRM_FRAMES + 3, persons=[CENTRED])
+check("engagement completes once GUIDED catches up",
+      main.state == DroneState.TRACKING,
+      "-> %s" % main.state.name)
+
+# And the property that motivated the latch must still hold: a return to
+# GUIDED with the switch untouched must NOT silently re-engage.
+fake_drone.mode = "LOITER"
+tick(2)
+check("pilot takeover drops to IDLE", main.state == DroneState.IDLE,
+      "-> %s" % main.state.name)
+fake_drone.mode = "GUIDED"
+tick(10, persons=[CENTRED])
+check("returning to GUIDED with the switch untouched does NOT re-engage",
+      main.state == DroneState.READY,
+      "-> %s" % main.state.name)
+
+# A fresh down-up cycle re-arms it.
+fake_drone.rc[cfg.CH_ENABLE] = 1000
+tick(1)
+fake_drone.rc[cfg.CH_ENABLE] = 1900
+tick(cfg.TARGET_CONFIRM_FRAMES + 3, persons=[CENTRED])
+check("a fresh switch cycle re-engages",
+      main.state == DroneState.TRACKING,
+      "-> %s" % main.state.name)
+
+
+print("\n=== Automatic takeoff ===")
+
+cfg.AUTO_TAKEOFF = True
+try:
+    # On the ground, armed, target confirmed -> TAKEOFF, not TRACKING.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 0.0
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(cfg.TARGET_CONFIRM_FRAMES + 2)
+    check("engaging on the ground enters TAKEOFF, not TRACKING",
+          main.state == DroneState.TAKEOFF,
+          "-> %s" % main.state.name)
+    check("a takeoff was commanded at the configured altitude",
+          takeoff_requests == [cfg.TAKEOFF_ALT_M],
+          "-> %r" % takeoff_requests)
+
+    # THE critical property: no setpoints during the climb. A
+    # SET_POSITION_TARGET mid-climb switches ArduPilot's guided submode
+    # and abandons the takeoff wherever it happens to be.
+    del sent[:]
+    tick(10)
+    check("NO setpoints are sent while the Pixhawk flies the climb",
+          len(sent) == 0, "-> %d setpoints" % len(sent))
+    check("still climbing while below the completion altitude",
+          main.state == DroneState.TAKEOFF,
+          "-> %s" % main.state.name)
+
+    # Reaching the target altitude hands over to TRACKING.
+    fake_drone.alt = cfg.TAKEOFF_ALT_M - cfg.TAKEOFF_ALT_TOLERANCE_M
+    tick(2, persons=[CENTRED])
+    check("reaching the target altitude hands over to TRACKING",
+          main.state == DroneState.TRACKING,
+          "-> %s at %.2f m" % (main.state.name, fake_drone.alt))
+
+    # A rejected takeoff must not leave it sitting armed and idle.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 0.0
+    fake_drone.takeoff_ok = False
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(cfg.TARGET_CONFIRM_FRAMES + 3)
+    check("a rejected takeoff escalates to EMERGENCY",
+          main.state == DroneState.EMERGENCY,
+          "-> %s" % main.state.name)
+
+    # A climb that never reaches altitude must time out, not hang.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 0.0
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(cfg.TARGET_CONFIRM_FRAMES + 2)
+    assert main.state == DroneState.TAKEOFF
+    fake_drone.alt = 0.2                      # never climbs
+    CLOCK[0] += cfg.TAKEOFF_TIMEOUT_S + 1.0
+    tick(2)
+    check("a stalled climb times out to EMERGENCY",
+          main.state == DroneState.EMERGENCY,
+          "-> %s" % main.state.name)
+
+    # The AI switch must abort a climb in progress.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 0.0
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(cfg.TARGET_CONFIRM_FRAMES + 2)
+    assert main.state == DroneState.TAKEOFF
+    fake_drone.rc[cfg.CH_ENABLE] = 1000
+    tick(1)
+    check("switching the AI off aborts the climb back to READY",
+          main.state == DroneState.READY,
+          "-> %s" % main.state.name)
+
+    # Already airborne: auto-takeoff must refuse rather than command one.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 8.0
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(10)
+    check("auto-takeoff refuses to engage while already airborne",
+          main.state == DroneState.READY and not takeoff_requests,
+          "-> %s, %r" % (main.state.name, takeoff_requests))
+
+    # Disarmed: never command a takeoff.
+    fresh(DroneState.READY, enable_us=1000, persons=[CENTRED])
+    fake_drone.alt = 0.0
+    fake_drone.armed = False
+    tick(2)
+    fake_drone.rc[cfg.CH_ENABLE] = 1900
+    tick(10)
+    check("auto-takeoff refuses while disarmed",
+          main.state == DroneState.READY and not takeoff_requests,
+          "-> %s, %r" % (main.state.name, takeoff_requests))
+finally:
+    cfg.AUTO_TAKEOFF = False
 
 
 print("\n=== Engagement gates have no bypass ===")

@@ -48,6 +48,9 @@ track_started = None
 search_start = None
 search_dir = 1.0            # +1 = yaw right, matching the corrected sign
 
+takeoff_started = None
+takeoff_sent = False
+
 last_dist = None
 last_dist_t = None
 jump_count = 0
@@ -201,6 +204,7 @@ def soft_reset(keep_target=False):
     """
     global lost_since, reacquire_count, confirm_count, last_error_x
     global last_dist, last_dist_t, jump_count, vision_faults, track_started
+    global takeoff_started, takeoff_sent
 
     controller.reset()
     if not keep_target:
@@ -215,6 +219,8 @@ def soft_reset(keep_target=False):
     jump_count = 0
     vision_faults = 0
     track_started = None
+    takeoff_started = None
+    takeoff_sent = False
 
 
 # ---------------------------------------------------------------- sensors ----
@@ -388,6 +394,7 @@ def run_tick(now, tick_duration):
     global self_commanded_mode, rtl_requested
     global emergency_since, rtl_attempts, land_attempted
     global search_start, search_dir
+    global takeoff_started, takeoff_sent, _slow_tick
 
     drone.poll()
     drone.send_heartbeat()
@@ -466,6 +473,23 @@ def run_tick(now, tick_duration):
                 soft_reset()
                 enter_emergency("vision stalled")
 
+    # ---- RC enable edge tracking ------------------------------------------
+    # Deliberately BEFORE the mode gate. When the enable switch is also the
+    # GUIDED switch (CH_ENABLE = 9), flipping it up changes two things at
+    # once, and the mode change only reaches us on the next HEARTBEAT. If
+    # the edge were detected after the mode gate, the tick where the switch
+    # rises would still read the old mode, take the pilot-control path, and
+    # consume the edge -- so the latch would never arm and the aircraft
+    # would never engage. Latching first makes the ordering irrelevant.
+    if enable == OFF:
+        engage_armed = False
+    elif previous_enable == OFF:
+        # Strict low->high transition. prev_enable starts as None, so a
+        # switch already high at boot cannot engage until it is cycled.
+        if not engage_armed:
+            _log.info("AI enable edge seen (%s)", _ENABLE_NAMES[enable])
+        engage_armed = True
+
     # ---- pilot authority ---------------------------------------------------
     if mode != "GUIDED":
         if self_commanded_mode is not None and mode == self_commanded_mode:
@@ -484,24 +508,17 @@ def run_tick(now, tick_duration):
         self_commanded_mode = None
         rtl_requested = False
         emergency_since = None
-        engage_armed = False
+        # engage_armed is NOT cleared here. It is consumed at engagement
+        # and cleared whenever the switch goes OFF, which is what stops a
+        # return to GUIDED from silently re-engaging. Clearing it here as
+        # well would swallow the edge during the mode-change latency.
         record["gate"] = "pilot"
         return record
 
-    # ---- RC enable edge tracking ------------------------------------------
-    if enable == OFF:
-        engage_armed = False
-    elif previous_enable == OFF:
-        # Strict low->high transition. Latched so it survives until the other
-        # engagement gates are satisfied. prev_enable starts as None, so a
-        # switch already high at boot cannot engage until it is cycled.
-        if not engage_armed:
-            _log.info("AI enable edge seen (%s)", _ENABLE_NAMES[enable])
-        engage_armed = True
-
     # The switch is checked in EVERY active state. Previously it was tested
     # only in READY, so flipping it off did not stop tracking.
-    if enable == OFF and state in (DroneState.TRACKING, DroneState.SEARCHING):
+    if enable == OFF and state in (DroneState.TAKEOFF, DroneState.TRACKING,
+                                   DroneState.SEARCHING):
         _log.warning("AI disabled by RC -> READY")
         soft_reset()
         state = DroneState.READY
@@ -519,26 +536,78 @@ def run_tick(now, tick_duration):
         target = tracker.select(persons) if vision_ok else None
         confirm_count = confirm_count + 1 if target is not None else 0
 
-        alt_ok = alt is not None and alt >= cfg.MIN_TRACK_ALT_M
         target_ok = confirm_count >= cfg.TARGET_CONFIRM_FRAMES
+
+        # With automatic takeoff the aircraft is expected to be ON THE
+        # GROUND here, so the altitude gate is inverted: refuse if we are
+        # already flying (a takeoff command would be rejected anyway).
+        # Without it, the old gate applies and the pilot flies the climb.
+        if cfg.AUTO_TAKEOFF:
+            alt_ok = alt is not None and alt < cfg.TAKEOFF_MAX_START_ALT_M
+            alt_msg = "already airborne (%s m); auto-takeoff expects the ground"
+        else:
+            alt_ok = alt is not None and alt >= cfg.MIN_TRACK_ALT_M
+            alt_msg = "altitude %s < %.1f m"
 
         if engage_armed:
             if not armed:
-                _status(now, "engage held: not armed")
+                _status(now, "engage held: not armed -- arm on ch%d first",
+                        10)
             elif not alt_ok:
-                _status(now, "engage held: altitude %s < %.1f m",
-                        "unknown" if alt is None else "%.1f" % alt,
-                        cfg.MIN_TRACK_ALT_M)
+                if cfg.AUTO_TAKEOFF:
+                    _status(now, "engage held: " + alt_msg,
+                            "unknown" if alt is None else "%.1f" % alt)
+                else:
+                    _status(now, "engage held: " + alt_msg,
+                            "unknown" if alt is None else "%.1f" % alt,
+                            cfg.MIN_TRACK_ALT_M)
             elif not target_ok:
                 _status(now, "engage held: target unconfirmed (%d/%d)",
                         confirm_count, cfg.TARGET_CONFIRM_FRAMES)
             else:
                 soft_reset(keep_target=True)
-                state = DroneState.TRACKING
-                track_started = now
-                last_confident_track = now
                 engage_armed = False
-                _log.info("TRACKING engaged (%s)", _ENABLE_NAMES[enable])
+                if cfg.AUTO_TAKEOFF:
+                    state = DroneState.TAKEOFF
+                    takeoff_started = now
+                    takeoff_sent = False
+                    _log.info("TAKEOFF to %.1f m", cfg.TAKEOFF_ALT_M)
+                else:
+                    state = DroneState.TRACKING
+                    track_started = now
+                    last_confident_track = now
+                    _log.info("TRACKING engaged (%s)",
+                              _ENABLE_NAMES[enable])
+
+    elif state == DroneState.TAKEOFF:
+        # The Pixhawk owns this climb. We deliberately send NO setpoints:
+        # ArduPilot's guided takeoff is an altitude controller, and a
+        # SET_POSITION_TARGET arriving mid-climb switches the guided
+        # submode and abandons it -- the aircraft would stop climbing
+        # wherever it happened to be.
+        record["gate"] = "takeoff"
+
+        if not takeoff_sent:
+            takeoff_sent = True
+            _slow_tick = True
+            if not drone.takeoff(cfg.TAKEOFF_ALT_M):
+                enter_emergency("takeoff command rejected")
+        elif alt is not None and alt >= (cfg.TAKEOFF_ALT_M
+                                         - cfg.TAKEOFF_ALT_TOLERANCE_M):
+            _log.info("takeoff complete at %.2f m -> TRACKING", alt)
+            state = DroneState.TRACKING
+            track_started = now
+            last_confident_track = now
+            controller.reset()
+        elif now - takeoff_started > cfg.TAKEOFF_TIMEOUT_S:
+            enter_emergency("takeoff did not reach %.1f m in %.0f s (at %s)"
+                            % (cfg.TAKEOFF_ALT_M, cfg.TAKEOFF_TIMEOUT_S,
+                               "unknown" if alt is None
+                               else "%.2f m" % alt))
+        else:
+            _status(now, "climbing: %s / %.1f m",
+                    "unknown" if alt is None else "%.2f" % alt,
+                    cfg.TAKEOFF_ALT_M)
 
     elif state == DroneState.TRACKING:
         if not vision_ok:

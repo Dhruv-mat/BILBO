@@ -466,6 +466,9 @@ def section_lidar(duration):
               repr(exc))
         return
 
+    print("\n  >>> AIM THE LIDAR AT A FLAT WALL ABOUT 2 m AWAY and hold the")
+    print("  >>> airframe still for the next %.0f seconds. <<<\n"
+          % duration)
     samples, gaps = [], 0
     strengths = []
     last_ok = None
@@ -507,13 +510,32 @@ def section_lidar(duration):
               "%d..%d cm" % (min(samples), max(samples)),
               "%d..%d" % (cfg.LIDAR_MIN_CM, cfg.LIDAR_MAX_CM))
         if len(samples) > 4:
-            spread = statistics.pstdev(samples)
-            R.note("range noise (std dev, target held still)",
-                   "%.1f cm" % spread)
-            R.add(IMPORTANT, "range noise smaller than the distance deadband",
-                  spread < cfg.DIST_DEADBAND_CM, "%.1f cm" % spread,
-                  "< %.0f cm" % cfg.DIST_DEADBAND_CM,
-                  "noise above the deadband means constant micro-corrections")
+            # Sample-to-sample jitter, NOT the spread over the whole run.
+            # A std dev across the run conflates real sensor noise with
+            # "the operator moved what it was aimed at" -- a 10 s sweep
+            # from 34 cm to 276 cm reports 58 cm of "noise" when the
+            # sensor was actually rock steady. Consecutive differences
+            # are immune to slow changes in the scene and are what
+            # actually drives micro-corrections.
+            steps = [abs(b - a) for a, b in zip(samples, samples[1:])]
+            jitter = statistics.median(steps)
+            worst_step = max(steps)
+            R.note("range spread over the whole sample",
+                   "%.1f cm std dev (scene-dependent, not a fault)"
+                   % statistics.pstdev(samples))
+            R.note("range jitter (median consecutive change)",
+                   "%.1f cm" % jitter)
+            R.note("largest single-sample change", "%.0f cm" % worst_step)
+            R.add(IMPORTANT, "sample-to-sample jitter well inside the distance deadband",
+                  jitter < cfg.DIST_DEADBAND_CM / 2.0,
+                  "%.1f cm" % jitter,
+                  "< %.0f cm" % (cfg.DIST_DEADBAND_CM / 2.0),
+                  "jitter near the deadband means constant micro-corrections")
+            R.add(IMPORTANT, "no single jump beyond the jump-rejection threshold",
+                  worst_step <= cfg.LIDAR_MAX_JUMP_CM,
+                  "%.0f cm" % worst_step,
+                  "<= %.0f cm" % cfg.LIDAR_MAX_JUMP_CM,
+                  "larger jumps are rejected unless they repeat, which is intended")
     if strengths:
         R.note("signal strength min/median/max", "%d / %d / %d"
                % (min(strengths), int(statistics.median(strengths)),
@@ -551,9 +573,20 @@ def section_camera(duration):
         R.add(CRITICAL, "camera geometry matches config", False, "mismatch",
               "match", repr(exc))
 
-    print("\n  >>> STAND IN FRONT OF THE CAMERA for the next %.0f seconds,"
-          % duration)
-    print("  >>> and move left and right across the frame. <<<\n")
+    # Wait for the first real inference before timing anything. camera._latest
+    # starts as (0.0, None), so sampling immediately measures an "age" of
+    # now - 0.0 -- the Pi uptime, which reported as 4181361 ms and failed
+    # the staleness check for no reason.
+    warm = time.monotonic() + 10.0
+    while not camera.inference_alive() and time.monotonic() < warm:
+        time.sleep(0.05)
+    R.add(CRITICAL, "inference started within 10 s",
+          camera.inference_alive(),
+          "yes" if camera.inference_alive() else "no")
+
+    print("\n  >>> STAND ABOUT 2 m FROM THE CAMERA -- not at arm's length --")
+    print("  >>> and walk fully LEFT then fully RIGHT across the frame,")
+    print("  >>> for the next %.0f seconds. <<<\n" % duration)
 
     deadline = time.monotonic() + duration
     frames = 0
@@ -567,7 +600,7 @@ def section_camera(duration):
     try:
         while time.monotonic() < deadline:
             ts, persons = camera.get_latest()
-            if ts != last_ts:
+            if ts != last_ts and ts > 0.0:
                 frames += 1
                 last_ts = ts
                 ages.append(time.monotonic() - ts)
@@ -627,16 +660,31 @@ def section_camera(duration):
         R.note("target box width min/median/max", "%d / %d / %d px"
                % (min(widths), int(statistics.median(widths)), max(widths)))
         import tracker as _t
+        median_w = statistics.median(widths)
         R.note("resulting range gate at median width",
-               "%.0f px" % _t.hgate_px(statistics.median(widths)))
+               "%.0f px" % _t.hgate_px(median_w))
+        # Box width is a usable range estimate: a ~0.5 m shoulder width
+        # subtending median_w pixels puts the subject at this distance.
+        import math as _m
+        arc = median_w / cfg.PIXELS_PER_DEGREE
+        est = (0.25 / _m.tan(_m.radians(arc / 2.0))
+               if 0 < arc < 179 else float("inf"))
+        R.note("estimated subject distance from box width",
+               "%.2f m (%.0f deg of arc)" % (est, arc))
+        R.add(IMPORTANT, "subject stood at a realistic tracking distance",
+              0.8 < est < 8.0, "%.2f m" % est, "0.8 - 8 m",
+              "at arm's length the box fills the frame, error_x cannot move, "
+              "and the range gate sits clamped at its ceiling -- the sample "
+              "does not represent flight")
     if errors_x:
         R.note("error_x range observed", "%+.0f .. %+.0f px"
                % (min(errors_x), max(errors_x)))
         R.add(IMPORTANT, "target was seen on BOTH sides of centre",
               min(errors_x) < -10 and max(errors_x) > 10,
-              "%+.0f .. %+.0f" % (min(errors_x), max(errors_x)),
-              "both signs",
-              "needed to prove the yaw sign in both directions")
+              "%+.0f .. %+.0f px" % (min(errors_x), max(errors_x)),
+              "one reading below -10 and one above +10",
+              "stand further back and walk fully to both edges of frame; this "
+              "is what exercises the yaw sign in both directions")
 
 
 # ================================================== MAVLink live sample ===
@@ -686,6 +734,42 @@ def section_mavlink(duration):
     if len(nodes) > 1:
         R.note("multiple nodes present",
                "normal with a GCS or telemetry radio; the Pi filters them")
+
+    # Link budget. 8N1 means 10 bits per byte, so the byte budget is
+    # baud/10. Oversubscription shows up as requested stream rates not
+    # being honoured and as a draining backlog (heartbeat intervals of
+    # 0.00 s), both of which add latency to everything the Pi reads.
+    APPROX_BYTES = {"HEARTBEAT": 23, "COMMAND_ACK": 24}
+    est_bytes = sum(seen[k] * APPROX_BYTES.get(k[2], 40) for k in seen)
+    est_rate = est_bytes / elapsed
+    budget = cfg.MAVLINK_BAUD / 10.0
+    R.note("estimated inbound traffic", "%.0f B/s" % est_rate)
+    R.note("link byte budget at %d baud" % cfg.MAVLINK_BAUD,
+           "%.0f B/s" % budget)
+    R.add(IMPORTANT, "inbound traffic within the link budget",
+          est_rate < budget * 0.8,
+          "%.0f B/s = %.0f%% of budget" % (est_rate,
+                                          100.0 * est_rate / budget),
+          "< 80%% of %.0f B/s" % budget,
+          "raise the Pi link to 921600 (SERIALn_BAUD=921 and cfg.MAVLINK_BAUD), "
+          "and/or disconnect Mission Planner: a GCS on the telemetry radio makes "
+          "ArduPilot route its traffic onto this link too")
+
+    rc_rate = sum(seen[k] for k in seen if k[2] == "RC_CHANNELS") / elapsed
+    R.note("RC_CHANNELS rate", "%.1f Hz" % rc_rate)
+    R.add(CRITICAL, "RC_CHANNELS arrives faster than the staleness timeout",
+          rc_rate > 1.0 / cfg.RC_STALE_S * 2.0,
+          "%.1f Hz" % rc_rate,
+          "> %.1f Hz" % (2.0 / cfg.RC_STALE_S),
+          "below this the AI switch can read stale and fail closed mid-flight")
+
+    hb_rate = sum(seen[k] for k in seen
+                  if k[2] == "HEARTBEAT" and k[0] == 1) / elapsed
+    R.note("autopilot HEARTBEAT rate", "%.1f Hz" % hb_rate)
+    R.add(IMPORTANT, "heartbeat rate is plausible, not a drained backlog",
+          hb_rate < 20.0, "%.1f Hz" % hb_rate, "< 20 Hz",
+          "a rate this high means messages were queued and arrived in a burst, "
+          "which is a saturated link -- everything the Pi reads is then late")
 
     present = set(k[2] for k in seen)
     R.add(CRITICAL, "HEARTBEAT streaming", "HEARTBEAT" in present,

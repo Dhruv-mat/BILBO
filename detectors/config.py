@@ -339,7 +339,22 @@ HARD_MAX_YAW_RATE_DEG_S = 60.0
 
 # --------------------------------------------------- state machine / RC -----
 
-CH_ENABLE = 8
+# The AI enable switch is the SAME channel that selects GUIDED (RC9_OPTION = 55).
+#
+# One switch, one meaning: ch9 up hands the aircraft to the Pi, ch9 down
+# takes it back. There is no state where GUIDED is selected but the Pi is
+# idle, and no way to leave autonomy armed after dropping out of GUIDED.
+#
+# This frees ch8 for RTL (RC8_OPTION = 4), which a 3-position mode switch
+# could not provide: ArduPilot splits FLTMODE_CH into six PWM bands and a
+# 3-position switch only reaches bands 1, 4 and 6, so FLTMODE3 was never
+# selectable on this airframe.
+#
+# What is lost: you can no longer sit in GUIDED with the Pi deliberately
+# idle. The target-confirmation gate covers that -- raise ch9 with nobody
+# in front of the camera and the aircraft holds position without engaging,
+# which is exactly the 'does GUIDED hold?' check you want before a flight.
+CH_ENABLE = 9
 # 2-position: OFF below the threshold, full tracking above it.
 #
 # There was previously a middle YAW_ONLY position that suppressed forward
@@ -384,6 +399,38 @@ MAX_LOST_TRACK_S = 25.0
 # geofence, and strictly weaker -- any Pi bug can defeat it.
 MAX_TRACK_DURATION_S = 240.0
 
-MIN_TRACK_ALT_M = 2.0
+# ---- automatic takeoff -------------------------------------------------
+#
+# The pilot arms (ch10) and selects GUIDED (ch9); flipping the AI switch
+# then triggers MAV_CMD_NAV_TAKEOFF and the Pixhawk flies the climb.
+# Arming is deliberately NOT automated: it is the one transition where a
+# software fault spins propellers with nobody expecting it, so a human
+# stays in that loop.
+AUTO_TAKEOFF = True
+
+# SAFETY NOTE ON THIS VALUE. A 1.83 m person plus barometric drift of
+# roughly +/-0.5 m means 2.2 m can put the propeller disc about 0.3 m
+# above head height, or lower. 3.0 m or more is materially safer, and the
+# tracked person should never walk underneath the aircraft at any height.
+TAKEOFF_ALT_M = 2.2
+
+# Climb is considered complete this far below the target, because the
+# altitude controller settles asymptotically and waiting for an exact
+# match would stall the state machine.
+TAKEOFF_ALT_TOLERANCE_M = 0.3
+
+# If the target altitude is not reached in this long, something is wrong
+# (thrust, a rejected command, a failing altitude estimate) and the
+# aircraft escalates rather than sitting in a half-finished climb.
+TAKEOFF_TIMEOUT_S = 20.0
+
+# Refuse to command a takeoff unless we are actually on the ground.
+TAKEOFF_MAX_START_ALT_M = 1.0
+
+# Engagement altitude floor. MUST sit below the takeoff completion
+# threshold (TAKEOFF_ALT_M - TAKEOFF_ALT_TOLERANCE_M) or the gate would
+# reject the very altitude the takeoff just delivered, and baro noise
+# would flip tracking on and off. tests/test_invariants.py asserts it.
+MIN_TRACK_ALT_M = 1.5
 EMERGENCY_HOLD_S = 3.0
 MAX_RTL_ATTEMPTS = 2

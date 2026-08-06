@@ -76,6 +76,9 @@ colours = {
 _STATE_APPEARANCE = {
     DroneState.IDLE: ("solid", "white"),
     DroneState.READY: ("solid", "blue"),
+    # Blinking green: the AI has control but the aircraft is still
+    # climbing. Distinct from solid green (tracking) at a glance.
+    DroneState.TAKEOFF: ("blink", "green"),
     DroneState.TRACKING: ("solid", "green"),
     DroneState.SEARCHING: ("blink", "yellow"),
     DroneState.RTL: ("solid", "purple"),

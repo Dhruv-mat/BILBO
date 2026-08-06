@@ -6,87 +6,57 @@ Props off until §5. Read §6 (things going wrong) *before* you fly, not after.
 
 ## 1. Your channel map
 
-| Ch | Function | Positions |
+| Ch | Function | ArduPilot param |
 |---|---|---|
-| 1–4 | roll / pitch / throttle / yaw | sticks |
-| **7** | **flight mode** (`FLTMODE_CH = 7`) | top STABILIZE / middle ALT_HOLD / bottom **LOITER** |
-| **8** | **AI enable** (`CH_ENABLE = 8`) | needs a 2-position switch — see below |
-| **9** | **GUIDED** (aux switch, `RC9_OPTION = 55`) | up = GUIDED, down = back to ch7 |
-| **10** | **arm / disarm** (`RC10_OPTION = 153`) | 2-position |
+| 1–4 | roll / pitch / throttle / yaw | — |
+| **7** | flight mode, 3-position | `FLTMODE_CH = 7` |
+| **8** | **RTL** | **`RC8_OPTION = 4`** |
+| **9** | **GUIDED *and* AI enable** | `RC9_OPTION = 55`, `CH_ENABLE = 9` |
+| **10** | arm / disarm | `RC10_OPTION = 153` |
 
-### The thing that matters most about ch9
+### Why FLTMODE3 did nothing
 
-Ch9 is an *auxiliary mode switch*, not a flight-mode position. ArduPilot treats
-those differently, and the difference is your entire escape plan:
+ArduPilot splits the mode channel into **six PWM bands**, but you have a
+**3-position switch**, so it can only ever produce three of them:
 
-- **Ch9 UP** → GUIDED.
-- **Ch9 DOWN** → the aircraft returns to **whatever ch7 is currently set to**.
+| ch7 PWM | Band | Your switch |
+|---|---|---|
+| ≤1230 | FLTMODE1 | top — STABILIZE |
+| 1231–1360 | FLTMODE2 | *unreachable* |
+| 1361–1490 | **FLTMODE3** | ***unreachable*** |
+| 1491–1620 | FLTMODE4 | middle — ALT_HOLD |
+| 1621–1749 | FLTMODE5 | *unreachable* |
+| ≥1750 | FLTMODE6 | bottom — LOITER |
 
-So ch9-down is your fastest way out of GUIDED — one switch, and the Pi is out of
-the loop instantly. But *where you land* is decided by ch7.
+Your switch produces 1025 / 1515 / 2004, hitting bands **1, 4 and 6 only**.
+`FLTMODE3 = 6` is set but can never be selected. Set it back to `0` if you like;
+it is harmless either way.
 
-> **Park ch7 on LOITER (bottom) before you ever raise ch9.**
->
-> Then ch9-down drops you straight into LOITER, which holds position on its own.
-> If ch7 is left on STABILIZE and you panic-flip ch9 down, you get a drifting
-> aircraft you now have to hand-fly. Same switch, completely different outcome.
+**RTL goes on ch8 as an aux switch instead:** `RC8_OPTION = 4`. Aux switches do
+not use the mode channel's bands at all, so this works with any spare 2-position
+switch.
 
-Moving ch7 while ch9 is up also works — the mode switch overrides — so you have
-two independent ways out.
+### One switch for GUIDED and the AI
 
-### Ch8 needs a switch assigned
+ch9 now does both: it selects GUIDED on the Pixhawk *and* is what the Pi reads
+as its enable (`CH_ENABLE = 9`).
 
-You said ch8 currently does nothing. That is exactly right on the *Pixhawk* side
-(`RC8_OPTION = 0` means ArduPilot ignores it and leaves it for the Pi), but the
-Pi still needs a real switch producing a real pulse on ch8 from your
-transmitter. Assign a 2-position switch to ch8, then confirm:
+- **ch9 UP** — hands the aircraft to the Pi
+- **ch9 DOWN** — takes it back, and returns to whatever ch7 says
 
-```bash
-python detectors/bench.py switch
-```
+One switch, one meaning. There is no longer a state where GUIDED is selected but
+the Pi sits idle, and no way to leave autonomy armed after dropping out of
+GUIDED.
 
-It must read roughly 1100 (OFF) and 1900 (ON). If ch8 is unassigned it will sit
-at a fixed value or read nothing, and the AI will simply never engage.
+**What you lose, and how to get it back.** You can no longer sit in GUIDED with
+the Pi deliberately idle. The target-confirmation gate covers it: raise ch9 with
+**nobody in front of the camera** and the aircraft enters GUIDED and holds
+position without engaging, because it has no confirmed target. That is exactly
+the "does GUIDED hold properly?" check you want before handing it the person.
 
-`RC8_OPTION` must stay **0**. Anything else and ArduPilot would grab the channel
-for its own aux function and fight the Pi for it.
-
-### Ch8 reading a constant 1025 us
-
-That is the channel sitting at its low endpoint with **no switch mapped to it on
-the transmitter**. `RC8_OPTION = 0` is correct on the Pixhawk side — it means
-ArduPilot ignores ch8 and leaves it for the Pi — but the Pi still needs a real
-pulse to read. Map a 2-position switch to ch8 on the Tx and re-run
-`bench.py switch`; it must move between roughly 1100 and 1900.
-
-Until it moves, `read_enable()` returns OFF forever and tracking can never
-engage. That is the fail-closed behaviour working as intended, not a fault.
-
-### If `armed` flickers True/False on the bench
-
-Fixed in the code, but worth knowing what it was: a MAVLink link is a shared bus.
-If a GCS or telemetry radio is on the same link, ArduPilot routes its heartbeats
-to the Pi's port too — and a GCS heartbeat has `base_mode = 0`, i.e. not armed.
-The Pi was reading `armed` from *any* heartbeat, so a foreign one cleared the
-flag. `mode` looked stable through the same fault only because pymavlink already
-filters GCS heartbeats out of its own mode tracking.
-
-`drone.py` now accepts telemetry only from the autopilot (matching system id,
-component 1, and not a GCS/companion type). `bench.py link` prints message rates
-**per source**, so if there is more than one node on your link you will see it:
-
-```
-  sys 1   comp 1    HEARTBEAT      2.0 Hz  (10)
-  sys 255 comp 190  HEARTBEAT      1.0 Hz  (5)     <-- a GCS, ignored
-
-  2 MAVLink nodes on this link: [(1, 1), (255, 190)]
-```
-
-### One param still missing
-
-Your param file has no **RTL** on the mode switch. Set `FLTMODE_CH` position 2
-(`FLTMODE2 = 6`) or any spare position, so you have a hands-off "bring it home"
-that works with a dead Pi.
+> **Park ch7 on LOITER before you raise ch9.** ch9-down returns you to whatever
+> ch7 says. On LOITER that means the aircraft stops and holds by itself. On
+> STABILIZE it means you are suddenly hand-flying a drifting drone.
 
 ---
 
@@ -106,27 +76,69 @@ yaw and throttle are all ignored while the Pi is commanding. If the drone starts
 misbehaving and you shove the stick, nothing will happen. **You must change mode
 first.** That is the single most important reflex to build.
 
-## 2b. Arming order
+## 2b. The flight sequence
 
-**You cannot arm in GUIDED.** Rudder arming is disabled in GUIDED/AUTO, and GUIDED needs a position estimate to enter at all. So:
+Automatic takeoff is enabled (`AUTO_TAKEOFF = True`). You arm; the aircraft
+flies its own climb; tracking starts at altitude. You never hand-fly it.
 
 ```
-1. Power on, wait for GPS lock (outdoors)
-2. ch7          -> top (STABILIZE)
-3. ch10         -> ARM
-4. Take off manually, climb to 3-5 m, hover steady
-5. ch7          -> bottom (LOITER)   <-- sets your escape destination FIRST
-6. ch9          -> UP (GUIDED)       <-- drone holds position, Pi not engaged
-7. ch8          -> ON                <-- tracking engages
+1. GPS lock (outdoors), ch9 DOWN
+2. ch7  -> bottom (LOITER)     sets your escape destination FIRST
+3. ch10 -> ARM                 the one manual step, deliberately
+4. ch9  -> UP                  GUIDED + AI: climbs to 2.2 m, then tracks
 ```
 
-Step 5 is the one people skip. It costs nothing and it decides where you end up
-when you bail out. Do it before ch9, not after.
+Four actions, one of them manual. To stop at any point: **ch9 DOWN**.
 
-Steps 6 and 7 are separate on purpose. GUIDED alone does nothing — the Pi still
-needs the enable switch. Two deliberate actions before the drone moves itself.
+**Arming stays manual on purpose.** It is the one transition where a software
+fault spins propellers with nobody expecting it, so a human stays in that loop.
+Everything after it is automatic.
 
-**To stop, at any time: ch9 DOWN** (with ch7 parked on LOITER). That is the real emergency stop, and it works even if the Pi has crashed, hung, or is on fire, because ArduPilot ignores guided setpoints outside GUIDED.
+**Step 2 before step 4.** ch9-down returns you to whatever ch7 says, so park it
+on LOITER before you ever raise ch9.
+
+**Start with ch9 DOWN.** Engagement is edge-triggered, so a switch already
+high at boot cannot engage until it is cycled.
+
+### What you will see
+
+| LED | Meaning |
+|---|---|
+| solid white | IDLE — not in GUIDED |
+| solid blue | READY — waiting for ch8 |
+| **blinking green** | **TAKEOFF — climbing, Pixhawk flying** |
+| solid green | TRACKING |
+
+During the climb the Pi sends **nothing**. ArduPilot's guided takeoff is an
+altitude controller, and a velocity setpoint arriving mid-climb switches the
+guided submode and abandons it — the aircraft would stop climbing wherever it
+happened to be. So the Pi stays quiet and just watches the altitude.
+
+### Takeoff altitude
+
+`TAKEOFF_ALT_M = 2.2` in config.py, one line.
+
+**Read this once before you fly it at 2.2 m.** You are 1.83 m tall and
+barometric altitude drifts around ±0.5 m, so the propeller disc can end up
+roughly 0.3 m above your head — or lower. 3.0 m or more is materially safer for
+the same tracking behaviour. Whatever you choose, **the tracked person must
+never walk underneath the aircraft.**
+
+If you change it, `MIN_TRACK_ALT_M` must stay below
+`TAKEOFF_ALT_M - TAKEOFF_ALT_TOLERANCE_M` or the engagement gate will reject the
+altitude the takeoff just delivered. `tests/test_invariants.py` asserts this.
+
+### If the climb goes wrong
+
+| Condition | What happens |
+|---|---|
+| Takeoff command rejected | EMERGENCY -> hold -> RTL -> LAND |
+| Never reaches altitude in 20 s | EMERGENCY, same ladder |
+| ch8 switched OFF mid-climb | back to READY, hovers, you take over |
+| Not armed, or already airborne | refuses to engage, logs why |
+
+And ch9-down still works at any point during the climb — it drops out of GUIDED
+into LOITER regardless of what the Pi is doing.
 
 ### One thing not to do
 
@@ -247,7 +259,7 @@ Over plain SSH the window cannot appear; `DISPLAY` isn't set. That is not a bug.
    works with a dead Pi.
 4. **Ch7 to STABILIZE (top).** Only if GPS is bad and LOITER will not hold. This
    hands you a drifting aircraft to hand-fly, which is why it is down here.
-5. **Ch8 OFF.** *Weakest.* Only works if the Pi is alive and reading RC —
+5. **Ch8 -> RTL.** Aux switch, executed by the Pixhawk. Only works if the Pi is alive and reading RC —
    precisely what has failed in most scenarios where you would want it. **Do not
    reach for this first.**
 
