@@ -86,9 +86,11 @@ def heartbeat(armed=True):
                    custom_mode=4)
 
 
-def rc(ch6=1000):
-    fields = {"chan%d_raw" % i: 1500 for i in range(1, 9)}
+def rc(ch6=1000, **overrides):
+    # Real RC_CHANNELS carries 18 channels, not 8.
+    fields = {"chan%d_raw" % i: 1500 for i in range(1, 19)}
     fields["chan6_raw"] = ch6
+    fields.update(overrides)
     return FakeMsg("RC_CHANNELS", **fields)
 
 
@@ -112,6 +114,27 @@ check("HEARTBEAT populated mode and armed",
       "-> %s armed=%s" % (drone.get_mode(), drone.is_armed()))
 check("RC_CHANNELS populated ch6", drone.get_channel(6) == 1750,
       "-> %r" % drone.get_channel(6))
+
+# Channels above 8 must be readable: ch9 and ch10 are real switches on
+# this airframe, and reading only 1-8 would silently break CH_ENABLE if
+# it were ever moved there.
+drone.master = FakeMaster(queue=[rc(chan9_raw=1900, chan10_raw=1100,
+                                    chan16_raw=1234)])
+drone.poll()
+check("channels above 8 are read (ch9, ch10, ch16)",
+      drone.get_channel(9) == 1900 and drone.get_channel(10) == 1100
+      and drone.get_channel(16) == 1234,
+      "-> ch9=%r ch10=%r ch16=%r"
+      % (drone.get_channel(9), drone.get_channel(10),
+         drone.get_channel(16)))
+
+# 0 and 65535 mean 'not present' and must not look like a real pulse.
+drone.master = FakeMaster(queue=[rc(chan11_raw=0, chan12_raw=65535)])
+drone.poll()
+check("unmapped channels (0 / 65535) read as None, not a pulse",
+      drone.get_channel(11) is None and drone.get_channel(12) is None,
+      "-> ch11=%r ch12=%r"
+      % (drone.get_channel(11), drone.get_channel(12)))
 check("GLOBAL_POSITION_INT converted mm to metres",
       abs(drone.get_relative_alt() - 4.5) < 1e-9,
       "-> %r" % drone.get_relative_alt())

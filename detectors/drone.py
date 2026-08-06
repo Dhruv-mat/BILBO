@@ -109,9 +109,20 @@ def _ingest(msg):
             msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
         )
     elif msg_type == "RC_CHANNELS":
-        _state["rc"] = {
-            i: getattr(msg, "chan%d_raw" % i) for i in range(1, 9)
-        }
+        # RC_CHANNELS carries chan1_raw..chan18_raw. Reading only 1-8 was a
+        # latent trap: setting CH_ENABLE to 9 or above would silently yield
+        # None forever, read_enable() would fail closed to OFF, and autonomy
+        # could never engage -- with no error to explain why.
+        #
+        # 0 and 65535 are ArduPilot's "channel not present" markers, so they
+        # are dropped rather than stored. get_channel() then returns None for
+        # an unmapped channel, which read_enable() already treats as OFF.
+        channels = {}
+        for i in range(1, 19):
+            value = getattr(msg, "chan%d_raw" % i, 0)
+            if value and value != 65535:
+                channels[i] = value
+        _state["rc"] = channels
         _state["last_rc"] = time.monotonic()
     elif msg_type == "GLOBAL_POSITION_INT":
         _state["rel_alt"] = msg.relative_alt / 1000.0

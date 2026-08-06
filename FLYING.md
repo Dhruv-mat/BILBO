@@ -4,31 +4,58 @@ Props off until §5. Read §6 (things going wrong) *before* you fly, not after.
 
 ---
 
-## 1. Transmitter setup
+## 1. Your channel map
 
-| Channel | Function | Set on the Tx as |
+| Ch | Function | Positions |
 |---|---|---|
-| 1–4 | roll / pitch / throttle / yaw | normal sticks |
-| **7** | **flight mode** (`FLTMODE_CH = 7`) | 6-position switch |
-| **8** | **AI enable** (`CH_ENABLE = 8`) | **2-position** switch |
-| **10** | **arm / disarm** (`RC10_OPTION = 153`) | 2-position switch, ideally spring-loaded |
+| 1–4 | roll / pitch / throttle / yaw | sticks |
+| **7** | **flight mode** (`FLTMODE_CH = 7`) | top STABILIZE / middle ALT_HOLD / bottom **LOITER** |
+| **8** | **AI enable** (`CH_ENABLE = 8`) | needs a 2-position switch — see below |
+| **9** | **GUIDED** (aux switch, `RC9_OPTION = 55`) | up = GUIDED, down = back to ch7 |
+| **10** | **arm / disarm** (`RC10_OPTION = 153`) | 2-position |
 
-The AI switch is now simply **OFF / ON**. There is no middle position any more — on means full tracking, yaw and forward.
+### The thing that matters most about ch9
 
-### Flight modes you must configure
+Ch9 is an *auxiliary mode switch*, not a flight-mode position. ArduPilot treats
+those differently, and the difference is your entire escape plan:
 
-Your params have LOITER on `FLTMODE6` already, but **no GUIDED and no RTL**. Two values to change:
+- **Ch9 UP** → GUIDED.
+- **Ch9 DOWN** → the aircraft returns to **whatever ch7 is currently set to**.
 
-| Param | Now | Set to | Mode |
-|---|---|---|---|
-| `FLTMODE1` | `0` | `0` | STABILIZE |
-| `FLTMODE2` | `0` | `0` | STABILIZE |
-| `FLTMODE3` | `0` | **`6`** | **RTL** |
-| `FLTMODE4` | `2` | `2` | ALT_HOLD |
-| `FLTMODE5` | `0` | **`4`** | **GUIDED** — required for autonomy |
-| `FLTMODE6` | `5` | `5` | **LOITER** — your escape position |
+So ch9-down is your fastest way out of GUIDED — one switch, and the Pi is out of
+the loop instantly. But *where you land* is decided by ch7.
 
-LOITER sits at position 6, one end of the switch travel, with GUIDED at 5 next to it — so escaping is one click, in a known direction. You want your escape mode to be the position your thumb finds without looking.
+> **Park ch7 on LOITER (bottom) before you ever raise ch9.**
+>
+> Then ch9-down drops you straight into LOITER, which holds position on its own.
+> If ch7 is left on STABILIZE and you panic-flip ch9 down, you get a drifting
+> aircraft you now have to hand-fly. Same switch, completely different outcome.
+
+Moving ch7 while ch9 is up also works — the mode switch overrides — so you have
+two independent ways out.
+
+### Ch8 needs a switch assigned
+
+You said ch8 currently does nothing. That is exactly right on the *Pixhawk* side
+(`RC8_OPTION = 0` means ArduPilot ignores it and leaves it for the Pi), but the
+Pi still needs a real switch producing a real pulse on ch8 from your
+transmitter. Assign a 2-position switch to ch8, then confirm:
+
+```bash
+python detectors/bench.py switch
+```
+
+It must read roughly 1100 (OFF) and 1900 (ON). If ch8 is unassigned it will sit
+at a fixed value or read nothing, and the AI will simply never engage.
+
+`RC8_OPTION` must stay **0**. Anything else and ArduPilot would grab the channel
+for its own aux function and fight the Pi for it.
+
+### One param still missing
+
+Your param file has no **RTL** on the mode switch. Set `FLTMODE_CH` position 2
+(`FLTMODE2 = 6`) or any spare position, so you have a hands-off "bring it home"
+that works with a dead Pi.
 
 ---
 
@@ -54,16 +81,21 @@ first.** That is the single most important reflex to build.
 
 ```
 1. Power on, wait for GPS lock (outdoors)
-2. Flight mode  -> STABILIZE  (or ALT_HOLD)
-3. ARM          -> ch10 switch, or full-right rudder
+2. ch7          -> top (STABILIZE)
+3. ch10         -> ARM
 4. Take off manually, climb to 3-5 m, hover steady
-5. Flight mode  -> GUIDED           (drone holds position)
-6. ch8          -> ON               (tracking engages)
+5. ch7          -> bottom (LOITER)   <-- sets your escape destination FIRST
+6. ch9          -> UP (GUIDED)       <-- drone holds position, Pi not engaged
+7. ch8          -> ON                <-- tracking engages
 ```
 
-Steps 5 and 6 are separate on purpose. GUIDED alone does nothing — the Pi still needs the switch. Two deliberate actions before the drone moves itself.
+Step 5 is the one people skip. It costs nothing and it decides where you end up
+when you bail out. Do it before ch9, not after.
 
-**To stop, at any time: flight mode to LOITER.** That is the real emergency stop, and it works even if the Pi has crashed, hung, or is on fire, because ArduPilot ignores guided setpoints outside GUIDED.
+Steps 6 and 7 are separate on purpose. GUIDED alone does nothing — the Pi still
+needs the enable switch. Two deliberate actions before the drone moves itself.
+
+**To stop, at any time: ch9 DOWN** (with ch7 parked on LOITER). That is the real emergency stop, and it works even if the Pi has crashed, hung, or is on fire, because ArduPilot ignores guided setpoints outside GUIDED.
 
 ### One thing not to do
 
@@ -127,7 +159,7 @@ The switch must be **cycled**. Booting with it already on will not engage — fl
 ```bash
 python detectors/bench.py leds                 # no Pixhawk needed
 python detectors/bench.py link                 # heartbeat, streams, RC
-python detectors/bench.py switch               # confirm ch8 OFF/ON bands
+python detectors/bench.py switch               # confirm ch8 actually moves
 python detectors/bench.py sensors              # LiDAR + camera health
 python tools/verify_yaw_sign.py                # THE critical one
 python detectors/bench.py motors --throttle 15 # props off, type REMOVED
@@ -152,40 +184,42 @@ Over plain SSH the window cannot appear; `DISPLAY` isn't set. That is not a bug.
 
 ### The ladder, in order of how much you should trust it
 
-1. **Flight mode → LOITER.** This is the panic button. LOITER *holds position by
-   itself* using GPS — the drone stops dead and hovers, and you do not have to
-   fly it. It takes effect the instant the switch moves, because ArduPilot
-   ignores the Pi's setpoints outside GUIDED. Your `FLTMODE6 = 5` is already
-   LOITER. **Practise finding this switch position without looking.**
-2. **Flight mode → RTL.** Executed by the Pixhawk, works even with a dead Pi.
-   Use it if LOITER is holding but you want it home.
-3. **Flight mode → STABILIZE / ALT_HOLD.** Use if GPS is bad and LOITER will not
-   hold. Note this hands you a drifting aircraft you must actively fly, which is
-   why it is below LOITER rather than above it.
-4. **ch8 → OFF.** Only works if the Pi is alive and reading RC — precisely the
-   thing that has failed in most of the scenarios you would need it for. It is
-   the weakest link in the chain. **Do not reach for it first.**
+1. **Ch9 DOWN.** Fastest exit from GUIDED — one switch, Pi out of the loop
+   immediately. Lands you in whatever ch7 says, which is why ch7 lives on
+   LOITER. **Practise this one until it is muscle memory.**
+2. **Ch7 to LOITER (bottom).** Works even with ch9 still up, because a
+   flight-mode change overrides the aux switch. Your second independent exit.
+3. **Ch7 to your RTL position** (once you have set one). Pixhawk flies it home,
+   works with a dead Pi.
+4. **Ch7 to STABILIZE (top).** Only if GPS is bad and LOITER will not hold. This
+   hands you a drifting aircraft to hand-fly, which is why it is down here.
+5. **Ch8 OFF.** *Weakest.* Only works if the Pi is alive and reading RC —
+   precisely what has failed in most scenarios where you would want it. **Do not
+   reach for this first.**
 
-Everything above 4 works because the aircraft is armed and ArduPilot trusts the
-RC link above everything else. None of them depend on the Pi being healthy.
+Options 1–4 all work because the aircraft is armed and ArduPilot trusts the RC
+link above everything else. None of them need the Pi to be healthy, or even
+running.
 
 ### Prove it before you trust it
 
-On the first flight, **before** you ever touch ch8: take off in STABILIZE, climb
-to a few metres, flip to GUIDED, confirm the drone just sits there holding
-position, then flip straight back to LOITER. You have now tested your whole
-escape path with the Pi doing nothing. Only then engage tracking.
+On the first flight, **before** you ever touch ch8: take off, climb to a few
+metres, park ch7 on LOITER, raise ch9 to GUIDED, confirm the drone just sits
+there holding position — then drop ch9 and confirm it stays put in LOITER.
+
+You have now tested your entire escape path with the Pi commanding nothing. Do
+that twice. Only then flip ch8.
 
 ### Specific symptoms
 
 | It's doing this | Why | Do this |
 |---|---|---|
-| Spinning and not stopping | yaw sign inverted, or lost target and searching | **LOITER**. Then re-run `verify_yaw_sign.py` on the ground |
-| Flying at you | suspect a bad LiDAR reading, or the safety floor failing | **LOITER**, then land |
-| Drifting off, ignoring you | Pi crashed; ArduPilot brakes after ~3 s (GUID_TIMEOUT) and holds | **LOITER**, then RTL |
-| Frozen, hovering | Pi stalled — check whether the white LED blips stopped | **LOITER** |
-| LEDs went orange | link lost or repeated faults; it has stopped commanding | **LOITER**, land, read the log |
-| Nothing at all on ch8 | check the log for which gate is holding (§3) | land, `bench.py switch` |
+| Spinning and not stopping | yaw sign inverted, or lost target and searching | **Ch9 DOWN.** Then re-run `verify_yaw_sign.py` on the ground |
+| Flying at you | suspect a bad LiDAR reading, or the safety floor failing | **Ch9 DOWN**, then land |
+| Drifting off, ignoring you | Pi crashed; ArduPilot brakes after ~3 s (GUID_TIMEOUT) and holds | **Ch9 DOWN**, then ch7 to RTL |
+| Frozen, hovering | Pi stalled — check whether the white LED blips stopped | **Ch9 DOWN** |
+| LEDs went orange | link lost or repeated faults; it has stopped commanding | **Ch9 DOWN**, land, read the log |
+| Nothing at all on ch8 | check the log for which gate is holding (§3) | land, `bench.py switch` — is a switch actually mapped to ch8? |
 
 ### If you lose contact entirely
 
