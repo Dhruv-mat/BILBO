@@ -427,7 +427,72 @@ def run_tick(now, tick_duration):
                 enter_emergency("vision stalled")
 
 
-                
+    if mode != "GUIDED":
+        if self_commanded_mode is not None and mode == self_commanded_mode:
+            record["gate"] = "self_" + mode.lower()
+            return record
+
+        if state != DroneState.IDLE:
+            _log.info("pilot mode is %s -> IDLE", mode)
+            soft_reset()
+            state = DroneState.IDLE
+        self_commanded_mode = None
+        rtl_requested = False
+        emergency_since = None
+        engage_armed = False
+        record["gate"] = "pilot"
+        return record
+
+    if enable == OFF:
+        engage_armed = False
+    elif previous_enable == OFF:
+        if not engage_armed:
+            _log.info("AI enable edge seen (%s)", _ENABLE_NAMES[enable])
+        engage_armed = True
+
+
+    if enable == OFF and state in (DroneState.TRACKING, DroneState.SEARCHING):
+        _log.warning("AI disabled by RC -> READY")
+        soft_reset()
+        state = DroneState.READY
+
+
+
+    if state == DroneState.IDLE:
+        soft_reset()
+        state = DroneState.READY
+        _log.info("READY")
+        drone.hover()
+
+    elif state == DroneState.READY:
+        drone.hover()
+
+        target = tracker.select(persons) if vision_ok else None
+        confirm_count = confirm_count + 1 if target is not None else 0
+
+        alt_ok = alt is not None and alt >= cfg.MIN_TRACK_ALT_M
+        target_ok = confirm_count >= cfg.TARGET_CONFIRM_FRAMES
+
+        if engage_armed:
+            if not armed:
+                _status(now, "engage held: not armed")
+            elif not alt_ok:
+                _status(now, "engage held: altitude %s < %.1f m",
+                        "unknown" if alt is None else "%.1f" % alt,
+                        cfg.MIN_TRACK_ALT_M)
+            elif not target_ok:
+                _status(now, "engage held: target unconfirmed (%d/%d)",
+                        confirm_count, cfg.TARGET_CONFIRM_FRAMES)
+            else:
+                soft_reset(keep_target=True)
+                state = DroneState.TRACKING
+                track_started = now
+                last_confident_track = now
+                engage_armed = False
+                _log.info("TRACKING engaged (%s)", _ENABLE_NAMES[enable])
+
+
+
 
 
 
