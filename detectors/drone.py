@@ -1,16 +1,3 @@
-"""MAVLink link layer to the Pixhawk.
-
-The Pi sends body-frame velocity + yaw-rate setpoints and nothing else. The
-Pixhawk owns stabilisation, EKF, GPS, motor mixing, compass, battery/RC
-failsafes and RTL execution. Nothing here changes that split.
-
-Key structural change: all inbound traffic is drained ONCE per control tick
-into a cache by poll(), and every consumer reads the cache. The original
-get_mode() performed no receive of its own -- it read master.flightmode, which
-only updated as an invisible side effect of get_rc_channels() having drained the
-buffer immediately beforehand. Reordering those two calls would have silently
-started returning stale data.
-"""
 
 import glob
 import logging
@@ -261,8 +248,6 @@ def rc_age():
     if _state["last_rc"] == 0.0:
         return float("inf")
     return time.monotonic() - _state["last_rc"]
-
-
 
 def get_mode():
     return _state["mode"]

@@ -422,7 +422,12 @@ def run_tick(now, tick_duration):
                     "None" if persons is None else len(persons),
                     camera.health(),
                 )
+            if vision_faults >= cfg.MAX_VISION_FAULTS:
+                soft_reset()
+                enter_emergency("vision stalled")
 
+
+                
 
 
 
