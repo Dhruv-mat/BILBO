@@ -353,7 +353,80 @@ def preflight():
 def run_tick(now, tick_duration):
     global state, prev_enable, engage_armed, confirm_count
     global lost_since, reacquire_count, last_error_x, last_confident_track
-    
+    global track_started, vision_faults, fault_latch
+    global self_commanded_mode, rtl_requested
+    global emergency_since, rtl_attempts, land_attempted
+    global search_start, search_dir
+
+
+    record = {
+        "state": state.name, "enable": "?", "mode": None, "armed": False,
+        "alt": None, "vision_age": float("inf"), "n_persons": None,
+        "error_x": 0.0, "error_y": 0.0, "bearing_deg": 0.0,
+        "distance_cm": None, "yaw_rate": 0.0, "forward": 0.0, "gate": "-",
+        "tick_s": tick_duration,
+    }
+
+
+    drone.poll()
+    drone.send_heartbeat()
+
+    if not drone.link_ok():
+        if fault_latch != "link":
+            _log.error("MAVLink link lost (age %.1fs)", drone.link_age())
+            fault_latch = "link"
+
+        if state in (DroneState.TRACKING, DroneState.SEARCHING):
+            soft_reset()
+            enter_emergency("link lost")
+
+        drone.reconnect()
+        record["gate"] = "link_lost"
+        return record
+
+    if fault_latch == "link":
+        _log.warning("MAVLink link restored")
+        fault_latch = None
+
+    mode = drone.get_mode()
+    armed = drone.is_armed()
+    alt = drone.get_relative_alt()
+
+    enable = read_enable(now)
+
+    previous_enable = prev_enable
+    prev_enable = enable
+
+    record["mode"] = mode
+    record["armed"] = armed
+    record["alt"] = alt
+    record["enable"] = _ENABLE_NAMES.get(enable, "?")
+
+    vision_ts, persons = camera.get_latest()
+    vision_age = now - vision_ts
+
+    vision_ok = persons is not None and vision_age <= cfg.VISION_MAX_AGE_S
+    record["vision_age"] = vision_age
+    record["n_persons"] = None if persons is None else len(persons)
+
+    if state in (DroneState.TRACKING, DroneState.SEARCHING):
+        if vision_ok:
+            vision_faults = 0
+        else:
+            vision_faults += 1
+            if vision_faults == 1:
+                _log.warning(
+                    "vision unhealthy: detection age %.2fs, frame age %.2fs, "
+                    "persons=%s, health=%s",
+                    vision_age, camera.frame_age(),
+                    "None" if persons is None else len(persons),
+                    camera.health(),
+                )
+
+
+
+
+
 
     
     
