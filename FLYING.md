@@ -187,6 +187,29 @@ The switch must be **cycled**. Booting with it already on will not engage — fl
 
 ## 5. Ground test order — props OFF
 
+### Start here: the acceptance report
+
+```bash
+python tools/preflight_report.py
+```
+
+One command. It exercises every module, hammers the control path with 3800
+deliberately absurd input combinations, measures the live LiDAR, camera and
+MAVLink link, and writes `~/bilbo-logs/preflight-<timestamp>.csv` with one row
+per check. It ends with a verdict: **ALL CHECKS PASSED**, **CLEARED WITH
+WARNINGS**, or **DO NOT FLY** with the reasons listed.
+
+It never commands motion. Absurd velocities are tested against a capture shim so
+nothing reaches the wire; the only thing it transmits is one zero-velocity
+setpoint, and it refuses even that while armed. It never spins a motor.
+
+Stand in front of the camera when it asks, and move side to side — it needs to
+see you on both sides of centre to confirm the yaw sign works in both
+directions. Send me the CSV if anything fails.
+
+Then the individual tools:
+
+
 ```bash
 python detectors/bench.py leds                 # no Pixhawk needed
 python detectors/bench.py link                 # heartbeat, streams, RC

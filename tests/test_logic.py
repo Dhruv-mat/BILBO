@@ -3,6 +3,8 @@
 import harness
 from harness import check, summary, tf_frame, FakePerson
 
+import math
+
 import config as cfg
 import lidar
 import tracker
@@ -101,6 +103,41 @@ t = controller.update(10000.0, None, send=False)
 check("yaw rate clamped to MAX_YAW_RATE",
       abs(t["yaw_rate"]) <= cfg.MAX_YAW_RATE_DEG_S + 1e-9,
       "yaw=%+.2f limit=%.1f" % (t["yaw_rate"], cfg.MAX_YAW_RATE_DEG_S))
+
+
+print("\n=== Controller: non-finite inputs cannot escape ===")
+
+# simple_pid's output clamp does NOT stop NaN: both `nan > upper` and
+# `nan < lower` are False, so a NaN input sails through the limiter and
+# out as the commanded rate. drone.move() would zero it at the wire, but
+# the telemetry and the flight CSV would still carry NaN, and relying on a
+# downstream clamp for correctness is one refactor away from being wrong.
+for bad in (float("nan"), float("inf"), float("-inf"), None):
+    controller.reset()
+    t = controller.update(bad, 300.0, send=False, now=100.0)
+    check("error_x=%r yields a finite yaw rate" % bad,
+          math.isfinite(t["yaw_rate"]), "-> %r" % t["yaw_rate"])
+    check("error_x=%r yields a finite forward" % bad,
+          math.isfinite(t["forward"]), "-> %r" % t["forward"])
+
+for bad in (float("nan"), float("inf"), float("-inf")):
+    controller.reset()
+    t = controller.update(0.0, bad, send=False, now=200.0)
+    check("distance=%r is treated as no reading" % bad,
+          t["forward"] == 0.0 and t["gate"] == "no_distance",
+          "-> fwd=%r gate=%s" % (t["forward"], t["gate"]))
+
+for bad in (float("nan"), float("inf"), -5.0, 0.0, None):
+    db = controller.deadband_px(bad)
+    check("deadband_px(%r) falls back to the default" % bad,
+          db == cfg.YAW_DEADBAND_PX, "-> %r" % db)
+
+check("get_lock_center(nan) returns the image centre, not NaN",
+      tracker.get_lock_center(float("nan")) == cfg.IMAGE_WIDTH_PX / 2.0,
+      "-> %r" % tracker.get_lock_center(float("nan")))
+check("get_lock_center(inf) returns the image centre",
+      tracker.get_lock_center(float("inf")) == cfg.IMAGE_WIDTH_PX / 2.0,
+      "-> %r" % tracker.get_lock_center(float("inf")))
 
 
 print("\n=== Controller: forward gating ===")

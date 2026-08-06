@@ -67,7 +67,13 @@ def get_lock_center(distance_cm):
     target box and can be as tight as LIDAR_HGATE_MIN_PX.
     """
     center = cfg.IMAGE_WIDTH_PX / 2.0
-    if distance_cm is None or distance_cm <= 0:
+    # NaN fails every comparison, so `distance_cm <= 0` does NOT catch it: a NaN
+    # range would sail through and return a NaN lock centre, making error_x NaN
+    # and poisoning everything downstream. drone.move() would still clamp it to
+    # zero at the wire, but a lock centre is not the place to rely on that.
+    if distance_cm is None or not math.isfinite(distance_cm):
+        return center
+    if distance_cm <= 0:
         return center
     angle_deg = math.degrees(math.atan(cfg.LIDAR_BASELINE_CM / distance_cm))
     return center + cfg.LIDAR_OFFSET_SIGN * angle_deg * cfg.PIXELS_PER_DEGREE

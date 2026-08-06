@@ -86,7 +86,11 @@ def deadband_px(target_width_px=None):
     stays inside the range gate -- see the note at cfg.YAW_DEADBAND_FRAC
     for why the two thresholds must not cross.
     """
-    if target_width_px is None or target_width_px <= 0:
+    if (target_width_px is None
+            or not math.isfinite(target_width_px)
+            or target_width_px <= 0):
+        # NaN fails every comparison, so `<= 0` alone does not catch it and the
+        # clamp below would silently return the ceiling instead of the default.
         return cfg.YAW_DEADBAND_PX
     scaled = target_width_px * cfg.YAW_DEADBAND_FRAC
     return max(cfg.YAW_DEADBAND_MIN_PX,
@@ -169,6 +173,22 @@ def update(error_x, distance_cm, yaw_only=False, send=True, now=None,
     """
     if now is None:
         now = time.monotonic()
+
+    # ---------------------------------------------------- sanitise inputs ---
+    # A non-finite input poisons everything downstream, because simple_pid's
+    # output clamp does NOT stop NaN: both `nan > upper` and `nan < lower` are
+    # False, so a NaN sails straight through the limiter and out as the
+    # commanded rate. drone.move() would still zero it at the wire, but a
+    # controller that depends on a downstream clamp for correctness is one
+    # refactor away from being wrong -- and its telemetry (and the flight CSV)
+    # would carry NaN either way. Clean it up here, at the boundary.
+    if error_x is None or not math.isfinite(error_x):
+        _log.error("non-finite error_x (%r) -> treating as centred", error_x)
+        error_x = 0.0
+    if distance_cm is not None and not math.isfinite(distance_cm):
+        _log.error("non-finite distance (%r) -> treating as no reading",
+                   distance_cm)
+        distance_cm = None
 
     # ------------------------------------------------------------ yaw ------
     # Sign derivation is documented in full at cfg.YAW_PID_OUTPUT_SIGN. In
