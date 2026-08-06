@@ -1,7 +1,13 @@
+import logging
 import serial
-import math
+import config as cfg
 
+_log = logging.getLogger(__name__)
+
+ser = None
+_buf = bytearray()
 ser = serial.Serial("/dev/ttyAMA0", 115200)
+
 
 def read_data():
     if ser.in_waiting >= 9:
