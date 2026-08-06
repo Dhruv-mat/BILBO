@@ -346,6 +346,13 @@ def preflight():
     return True
 
 
+#-----live checks--------
+
+#so basically this part of the code is gonna keep checking if everything is still working after preflight
+
+def run_tick(now, tick_duration):
+    global state, prev_enable, engage_armed, confirm_count
+    global lost_since, reacquire_count, last_error_x, last_confident_track
     
 
     
@@ -441,3 +448,5 @@ while True:
         drone.hover()
         led.led_status(effect="blink", color="red")
         continue
+
+
