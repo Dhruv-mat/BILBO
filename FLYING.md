@@ -338,18 +338,55 @@ bounding box, more reliable IMX500 output), but 2 m is close to a person with
 props turning, and the safety floor is only 50 cm below the standoff. Brief the
 person you are tracking, and keep the first flights over open ground.
 
-## 8. Autostart
-
-`bilbo.service` in the repo root. Edit the username and paths, then:
+## 8. Autostart on boot
 
 ```bash
-sudo cp bilbo.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable bilbo
-sudo systemctl start bilbo
-journalctl -u bilbo -f
+sudo bash tools/install_service.sh
 ```
 
-**Think before enabling this.** Autostart means the tracking program is running every time the battery goes on, including while you are carrying the aircraft. It cannot engage without GUIDED + armed + altitude + the switch, so it is safe by construction — but during bring-up you probably want `systemctl start` manually and only `enable` once you trust it.
+It detects your username, repo path and virtualenv, checks the interpreter can
+actually import `pymavlink`, `pyserial`, `simple_pid` and `picamera2`, creates
+`~/bilbo-logs` with the right ownership, and writes the unit. Nothing to edit.
 
-Flight logs land in `~/bilbo-logs/`: `bilbo.log` for humans, `flight-<timestamp>.csv` at full rate. The CSV is what diagnoses an anomaly; keep them.
+If the dependency check fails it tells you exactly what to do and installs
+nothing -- better than a service that fail-loops on every boot.
+
+```bash
+sudo systemctl start bilbo      # run now
+journalctl -u bilbo -f          # watch it
+sudo systemctl enable bilbo     # and on every boot, once you trust it
+sudo systemctl stop bilbo
+```
+
+### Is autostart safe?
+
+Yes, by construction. The program running is not the same as the aircraft
+moving. Engagement needs **all** of: GUIDED selected, armed, on the ground,
+a target confirmed for 3 frames, and a low->high edge on ch9. Booting with the
+switch already up cannot engage, because there is no edge.
+
+So the worst case of autostart is a program sitting in IDLE showing solid white
+while you carry the aircraft around.
+
+**During bring-up, prefer `start` over `enable`.** Turn on autostart once the
+behaviour has stopped surprising you.
+
+### Stop the service before running any bench tool
+
+```bash
+sudo systemctl stop bilbo
+```
+
+`bench.py`, `preflight_report.py` and `verify_yaw_sign.py` all want the same
+hardware. `lidar.init()` opens the port with `exclusive=True`, so the second
+opener gets a hard error rather than silently stealing bytes -- but you still
+have to stop one before starting the other.
+
+### How to tell it started, with no screen
+
+The LED strip is the readout. On a good boot you get the red/green/blue
+self-test, then **solid white** (IDLE). Anything else, or nothing at all, means
+preflight failed -- `journalctl -u bilbo -n 50` will say which sensor.
+
+Logs land in `~/bilbo-logs/`: `bilbo.log` for humans, `flight-<timestamp>.csv`
+at full rate. Keep the CSVs; they are what diagnoses an anomaly afterwards.

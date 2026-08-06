@@ -291,8 +291,9 @@ cmds = [c for c in drone.master.mav.calls if c[0] == "command"]
 streams = [c for c in drone.master.mav.calls if c[0] == "stream"]
 check("request_streams asks for each required message", len(cmds) == 4,
       "-> %d commands" % len(cmds))
-check("request_streams also sends the legacy data-stream fallback",
-      len(streams) == 1)
+check("request_streams does NOT send the ALL-stream fallback, which would"
+      " override the vehicle's own rate params and pin everything to 4 Hz",
+      len(streams) == 0, "-> %d ALL-stream requests" % len(streams))
 
 # Heartbeat is rate limited.
 drone._last_heartbeat_tx = 0.0

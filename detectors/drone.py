@@ -233,14 +233,40 @@ def connect(timeout=10.0):
         _log.exception("failed to open %s", device)
         return False
 
-    try:
-        hb = candidate.wait_heartbeat(timeout=timeout)
-    except Exception:
-        _log.exception("wait_heartbeat raised")
-        hb = None
+    # Wait for a heartbeat from the AUTOPILOT, not merely the first
+    # heartbeat on the wire. A GCS sharing this link (Mission Planner
+    # over the telemetry radio) also emits heartbeats, and pymavlink
+    # deliberately does not take target_system from a GCS heartbeat --
+    # so accepting one left target_system at 0, and _from_autopilot()
+    # then rejected every message until a real autopilot heartbeat
+    # happened along. A report showed ~48 messages discarded that way in
+    # the first half second, and connect() logging 'system 0'.
+    hb = None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            msg = candidate.recv_match(type="HEARTBEAT", blocking=True,
+                                       timeout=0.5)
+        except Exception:
+            _log.exception("wait_heartbeat raised")
+            break
+        if msg is None:
+            continue
+        if getattr(msg, "type", None) in (_MAV_TYPE_GCS,
+                                          _MAV_TYPE_ONBOARD):
+            continue
+        if msg.get_srcComponent() != _COMP_AUTOPILOT:
+            continue
+        hb = msg
+        # Pin these explicitly rather than trusting whichever heartbeat
+        # pymavlink happened to see first.
+        candidate.target_system = msg.get_srcSystem()
+        candidate.target_component = msg.get_srcComponent()
+        break
 
     if hb is None:
-        _log.error("no heartbeat within %.1fs on %s", timeout, device)
+        _log.error("no autopilot heartbeat within %.1fs on %s",
+                   timeout, device)
         try:
             candidate.close()
         except Exception:
@@ -332,14 +358,19 @@ def request_streams():
         except Exception:
             _log.exception("SET_MESSAGE_INTERVAL failed for id %d", msg_id)
 
-    # Belt-and-braces for firmware that ignores SET_MESSAGE_INTERVAL.
-    try:
-        master.mav.request_data_stream_send(
-            master.target_system, master.target_component,
-            mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 1,
-        )
-    except Exception:
-        _log.exception("request_data_stream failed")
+    # NO MAV_DATA_STREAM_ALL fallback here, deliberately.
+    #
+    # It was originally added as belt-and-braces for firmware that
+    # ignores SET_MESSAGE_INTERVAL. On this build it did the opposite of
+    # helping: requesting the ALL stream at 4 Hz overrode both the
+    # vehicle's own MAVn_* stream-rate parameters AND the per-message
+    # intervals requested just above. A preflight report showed every
+    # message type pinned at exactly 4.0 Hz -- including nineteen the Pi
+    # never reads -- and RC_CHANNELS stuck at 3.9 Hz despite both the
+    # parameter and the request asking for 10 Hz.
+    #
+    # Asking for precisely what we consume, and nothing else, is both
+    # lighter on the link and honest about what this program needs.
 
 
 # ------------------------------------------------------------- heartbeat ----
