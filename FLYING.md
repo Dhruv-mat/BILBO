@@ -51,6 +51,37 @@ at a fixed value or read nothing, and the AI will simply never engage.
 `RC8_OPTION` must stay **0**. Anything else and ArduPilot would grab the channel
 for its own aux function and fight the Pi for it.
 
+### Ch8 reading a constant 1025 us
+
+That is the channel sitting at its low endpoint with **no switch mapped to it on
+the transmitter**. `RC8_OPTION = 0` is correct on the Pixhawk side — it means
+ArduPilot ignores ch8 and leaves it for the Pi — but the Pi still needs a real
+pulse to read. Map a 2-position switch to ch8 on the Tx and re-run
+`bench.py switch`; it must move between roughly 1100 and 1900.
+
+Until it moves, `read_enable()` returns OFF forever and tracking can never
+engage. That is the fail-closed behaviour working as intended, not a fault.
+
+### If `armed` flickers True/False on the bench
+
+Fixed in the code, but worth knowing what it was: a MAVLink link is a shared bus.
+If a GCS or telemetry radio is on the same link, ArduPilot routes its heartbeats
+to the Pi's port too — and a GCS heartbeat has `base_mode = 0`, i.e. not armed.
+The Pi was reading `armed` from *any* heartbeat, so a foreign one cleared the
+flag. `mode` looked stable through the same fault only because pymavlink already
+filters GCS heartbeats out of its own mode tracking.
+
+`drone.py` now accepts telemetry only from the autopilot (matching system id,
+component 1, and not a GCS/companion type). `bench.py link` prints message rates
+**per source**, so if there is more than one node on your link you will see it:
+
+```
+  sys 1   comp 1    HEARTBEAT      2.0 Hz  (10)
+  sys 255 comp 190  HEARTBEAT      1.0 Hz  (5)     <-- a GCS, ignored
+
+  2 MAVLink nodes on this link: [(1, 1), (255, 190)]
+```
+
 ### One param still missing
 
 Your param file has no **RTL** on the mode switch. Set `FLTMODE_CH` position 2

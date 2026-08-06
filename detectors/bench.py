@@ -82,6 +82,7 @@ def cmd_link(args):
     # absent the AI-enable switch can never be read, so this is the single most
     # useful thing on the page.
     seen = {}
+    bad_data = 0
     start = time.monotonic()
     window = args.seconds
 
@@ -92,17 +93,34 @@ def cmd_link(args):
             continue
         name = msg.get_type()
         if name == "BAD_DATA":
-            seen["BAD_DATA"] = seen.get("BAD_DATA", 0) + 1
+            bad_data += 1
             continue
-        seen[name] = seen.get(name, 0) + 1
+        key = (msg.get_srcSystem(), msg.get_srcComponent(), name)
+        seen[key] = seen.get(key, 0) + 1
         drone._ingest(msg)
 
     elapsed = time.monotonic() - start
 
-    hr("MESSAGE RATES")
-    for name in sorted(seen):
-        print("  %-28s %6.1f Hz  (%d)"
-              % (name, seen[name] / elapsed, seen[name]))
+    hr("MESSAGE RATES  (by source system/component)")
+    # Showing the source matters: a second node on the link sending
+    # HEARTBEAT is what made the armed flag flap. Anything here whose
+    # sys/comp differs from the autopilot below is being ignored.
+    for key in sorted(seen):
+        srcsys, srccomp, name = key
+        print("  sys %-3s comp %-3s  %-24s %6.1f Hz  (%d)"
+              % (srcsys, srccomp, name, seen[key] / elapsed,
+                 seen[key]))
+    nodes = sorted(set((k[0], k[1]) for k in seen))
+    if len(nodes) > 1:
+        print("\n  %d MAVLink nodes on this link: %s"
+              % (len(nodes), nodes))
+        print("  autopilot is sys %s comp %s; everything else is "
+              "ignored (%d msgs so far)."
+              % (drone.master.target_system,
+                 mavutil.mavlink.MAV_COMP_ID_AUTOPILOT1,
+                 drone.foreign_msgs()))
+        print("  This is normal with a telemetry radio or GCS "
+              "sharing the link.")
 
     # Only these two are required for a bench test. GPS and altitude are
     # deliberately NOT required: indoors there is no fix, and nothing on this
@@ -118,15 +136,16 @@ def cmd_link(args):
 
     hr("REQUIRED FOR BENCH TESTING")
     missing = []
+    present = set(k[2] for k in seen)
     for name, why in required.items():
-        ok = seen.get(name, 0) > 0
+        ok = name in present
         print("  [%s] %-22s %s" % ("OK" if ok else "--", name, why))
         if not ok:
             missing.append(name)
 
     print("\nNot needed on the bench (absent indoors is expected):")
     for name, why in optional.items():
-        ok = seen.get(name, 0) > 0
+        ok = name in present
         print("  [%s] %-22s %s" % ("ok" if ok else "  ", name, why))
 
     if missing:
@@ -138,10 +157,10 @@ def cmd_link(args):
         print("  If the whole link is silent, suspect flow control: a 3-wire")
         print("  FTDI needs BRD_SERn_RTSCTS = 0, not 2 (auto).")
 
-    if seen.get("BAD_DATA"):
+    if bad_data:
         print("\n  %d BAD_DATA frames. A steady stream of these means a baud "
               "mismatch\n  or electrical noise on the link."
-              % seen["BAD_DATA"])
+              % bad_data)
 
     hr("VEHICLE STATE")
     print("mode     : %s" % drone.get_mode())

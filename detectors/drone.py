@@ -52,6 +52,7 @@ _state = {
 _last_setpoint_tx = 0.0
 _last_heartbeat_tx = 0.0
 _last_reconnect = 0.0
+_foreign_msgs = 0        # traffic from other MAVLink nodes, ignored
 
 
 # --------------------------------------------------------------- helpers ----
@@ -98,8 +99,62 @@ def _resolve_device():
     return None
 
 
+# Resolved once, with the wire values as fallbacks. Doing the lookups inline
+# would put the whole telemetry path behind three attribute accesses: if any one
+# raised, _ingest() would swallow it and EVERY message would be silently
+# dropped, which looks exactly like a dead link. A filter must not be able to
+# fail closed on the entire feed.
+_MAV_TYPE_GCS = getattr(mavutil.mavlink, "MAV_TYPE_GCS", 6)
+_MAV_TYPE_ONBOARD = getattr(mavutil.mavlink, "MAV_TYPE_ONBOARD_CONTROLLER", 18)
+_COMP_AUTOPILOT = getattr(mavutil.mavlink, "MAV_COMP_ID_AUTOPILOT1", 1)
+
+
+def _from_autopilot(msg):
+    """True if this message really came from the flight controller.
+
+    A MAVLink link is a shared bus, not a point-to-point pipe. Ours can carry
+    heartbeats from a GCS (Mission Planner over the telemetry radio, which
+    ArduPilot routes between links), from the radio itself, from a gimbal, or
+    from any other component -- all with base_mode = 0.
+    """
+    if not is_connected():
+        return False
+    if msg.get_srcSystem() != master.target_system:
+        return False
+    if msg.get_type() == "HEARTBEAT":
+        # A GCS or another companion is not the vehicle. Their base_mode has no
+        # SAFETY_ARMED bit, so accepting one flips `armed` to False.
+        if getattr(msg, "type", None) in (_MAV_TYPE_GCS, _MAV_TYPE_ONBOARD):
+            return False
+        if msg.get_srcComponent() != _COMP_AUTOPILOT:
+            return False
+    return True
+
+
 def _ingest(msg):
-    """Fold one received message into the cache."""
+    """Fold one received message into the cache.
+
+    Only the autopilot's own telemetry is accepted. Without this filter, any
+    other heartbeat on the link overwrote `armed` with False -- which showed up
+    on the bench as the armed flag flipping True/False with nobody touching the
+    switch. `mode` looked stable through the same fault only because pymavlink
+    already ignores MAV_TYPE_GCS heartbeats when it updates flightmode, so the
+    asymmetry between the two was the clue.
+    """
+    global _foreign_msgs
+
+    if not _from_autopilot(msg):
+        _foreign_msgs += 1
+        if _foreign_msgs in (1, 100, 1000):
+            _log.info(
+                "ignoring traffic from another MAVLink node "
+                "(sys %s comp %s, %s) -- count %d. Normal if a GCS or "
+                "telemetry radio shares this link.",
+                msg.get_srcSystem(), msg.get_srcComponent(), msg.get_type(),
+                _foreign_msgs,
+            )
+        return
+
     msg_type = msg.get_type()
 
     if msg_type == "HEARTBEAT":
@@ -331,6 +386,11 @@ def link_age():
 
 def link_ok():
     return link_age() <= cfg.LINK_TIMEOUT_S
+
+
+def foreign_msgs():
+    """Count of messages ignored because they came from another node."""
+    return _foreign_msgs
 
 
 def rc_age():

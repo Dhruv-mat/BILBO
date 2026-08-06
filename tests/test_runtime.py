@@ -40,12 +40,20 @@ class FakeMav:
 
 
 class FakeMsg:
-    def __init__(self, name, **fields):
+    def __init__(self, name, _srcsys=1, _srccomp=1, **fields):
         self._name = name
+        self._srcsys = _srcsys
+        self._srccomp = _srccomp
         self.__dict__.update(fields)
 
     def get_type(self):
         return self._name
+
+    def get_srcSystem(self):
+        return self._srcsys
+
+    def get_srcComponent(self):
+        return self._srccomp
 
 
 class FakeMaster:
@@ -80,10 +88,11 @@ class FakeMaster:
         self.closed = True
 
 
-def heartbeat(armed=True):
-    return FakeMsg("HEARTBEAT",
+def heartbeat(armed=True, _srcsys=1, _srccomp=1, mav_type=2):
+    # mav_type 2 = MAV_TYPE_QUADROTOR (a vehicle), 6 = MAV_TYPE_GCS.
+    return FakeMsg("HEARTBEAT", _srcsys=_srcsys, _srccomp=_srccomp,
                    base_mode=(128 if armed else 0),
-                   custom_mode=4)
+                   custom_mode=4, type=mav_type)
 
 
 def rc(ch6=1000, **overrides):
@@ -141,6 +150,59 @@ check("GLOBAL_POSITION_INT converted mm to metres",
 check("BAD_DATA did not raise", True)
 check("link_age is fresh after a heartbeat", drone.link_age() < 1.0,
       "-> %.3f s" % drone.link_age())
+
+# ---- the flapping `armed` flag -------------------------------------------
+# Reproduces the bench symptom exactly: armed flipped True/False with nobody
+# touching the switch, while `mode` stayed stable. A foreign heartbeat has
+# base_mode = 0, so accepting one cleared SAFETY_ARMED.
+drone.master = FakeMaster(queue=[heartbeat(armed=True)])
+drone.poll()
+check("autopilot heartbeat sets armed", drone.is_armed() is True)
+
+# A GCS on the same link (Mission Planner via the telemetry radio, routed by
+# ArduPilot). Same sysid, GCS type -- must be ignored.
+before = drone.foreign_msgs()
+drone.master = FakeMaster(queue=[heartbeat(armed=False, mav_type=6)])
+drone.poll()
+check("a GCS heartbeat does NOT clear the armed flag",
+      drone.is_armed() is True, "-> armed=%r" % drone.is_armed())
+check("and it is counted as ignored foreign traffic",
+      drone.foreign_msgs() > before,
+      "-> %d ignored" % drone.foreign_msgs())
+
+# Another companion computer announcing itself.
+drone.master = FakeMaster(queue=[heartbeat(armed=False, mav_type=18)])
+drone.poll()
+check("an onboard-controller heartbeat does not clear armed",
+      drone.is_armed() is True, "-> armed=%r" % drone.is_armed())
+
+# A different component on the same vehicle (gimbal, radio, ADSB).
+drone.master = FakeMaster(queue=[heartbeat(armed=False, _srccomp=154)])
+drone.poll()
+check("a non-autopilot component's heartbeat does not clear armed",
+      drone.is_armed() is True, "-> armed=%r" % drone.is_armed())
+
+# A different vehicle entirely.
+drone.master = FakeMaster(queue=[heartbeat(armed=False, _srcsys=7)])
+drone.poll()
+check("another vehicle's heartbeat does not clear armed",
+      drone.is_armed() is True, "-> armed=%r" % drone.is_armed())
+
+# But the real autopilot disarming MUST still be seen.
+drone.master = FakeMaster(queue=[heartbeat(armed=False)])
+drone.poll()
+check("a genuine autopilot disarm IS still registered",
+      drone.is_armed() is False, "-> armed=%r" % drone.is_armed())
+
+# Foreign RC_CHANNELS must not overwrite the real stick positions either.
+drone.master = FakeMaster(queue=[rc(chan8_raw=1900)])
+drone.poll()
+check("autopilot RC_CHANNELS is accepted", drone.get_channel(8) == 1900,
+      "-> %r" % drone.get_channel(8))
+drone.master = FakeMaster(queue=[rc(chan8_raw=1100, _srcsys=7)])
+drone.poll()
+check("foreign RC_CHANNELS does not overwrite the real switch positions",
+      drone.get_channel(8) == 1900, "-> %r" % drone.get_channel(8))
 
 # A flooded link must not make poll() loop forever.
 drone.master = FakeMaster(queue=[heartbeat() for _ in range(10000)])
