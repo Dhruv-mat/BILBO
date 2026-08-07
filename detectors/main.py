@@ -63,6 +63,8 @@ emergency_since = None
 rtl_attempts = 0
 land_attempted = False
 
+preflight_failure = None    # description of the first failed preflight check
+
 fault_latch = None
 consecutive_faults = 0
 _slow_tick = False          # set when a blocking mode change is expected
@@ -100,10 +102,23 @@ def _setup_logging():
         root.error("file logging unavailable; using stderr", exc_info=True)
         return
 
+    # WARNING and above ALWAYS go to stderr as well as the file.
+    #
+    # This used to be gated behind DEBUG_CONSOLE, which meant a preflight
+    # failure printed nothing at all: the program exited 1 in silence and the
+    # reason sat in a log file the operator had no reason to look at. That is a
+    # terrible failure mode for something you run in a field.
+    #
+    # The blocking-I/O argument for keeping the console quiet applies to the
+    # 15 Hz flight loop, not to startup. Everything the loop emits per tick is
+    # INFO and stays file-only; only genuine faults reach the terminal.
+    warn_stream = logging.StreamHandler(sys.stderr)
+    warn_stream.setFormatter(fmt)
+    warn_stream.setLevel(logging.WARNING)
+    root.addHandler(warn_stream)
+
     if cfg.DEBUG_CONSOLE:
-        # Never on by default. print()/stdout at loop rate is blocking I/O: if
-        # the consumer stops draining the pipe, the write blocks and the flight
-        # loop freezes.
+        # Full INFO-level mirroring, bench only.
         stream = logging.StreamHandler(sys.stderr)
         stream.setFormatter(fmt)
         root.addHandler(stream)
@@ -328,20 +343,59 @@ def _wait_for(predicate, timeout, interval=0.05, pump=None):
     return False
 
 
-def preflight():
+def _fail(subsystem, detail, exc_info=False):
+    """Record and log one preflight failure. Always returns False.
 
-    led.init()
+    Every abort goes through here, so no path can exit without naming both the
+    subsystem that stopped it and what to do about it.
+    """
+    global preflight_failure
+    preflight_failure = "%s: %s" % (subsystem, detail)
+    _log.error("PREFLIGHT FAIL [%s] %s", subsystem, detail, exc_info=exc_info)
+    return False
+
+
+def preflight():
+    """Prove every sensor the flight loop depends on before signalling READY.
+
+    Returns True, or False having set `preflight_failure` to a description of
+    the first check that failed.
+
+    Ordering matters: the flight controller comes first because it is the
+    component whose absence must abort. Battery, GPS, compass and EKF checks
+    are deliberately absent -- those are the Pixhawk's responsibility.
+    """
+    global preflight_failure
+    preflight_failure = None
+
+    if not led.init():
+        # Not fatal. The strip is a status indicator, not a flight sensor.
+        _log.warning("LED strip unavailable -- continuing without it")
     led.selftest()
 
+    # ---- flight controller -------------------------------------------------
     if not drone.connect(timeout=10.0):
-        _log.error("PREFLIGHT FAIL: no MAVLink heartbeat")
-        return False
+        import glob as _glob
+        available = sorted(_glob.glob("/dev/serial/by-id/*")) or ["(none)"]
+        return _fail(
+            "PIXHAWK",
+            "no autopilot heartbeat on %s within 10 s. Serial devices present: "
+            "%s. Check the FTDI is plugged in, that MAVLINK_DEVICE names it, "
+            "that SERIALn_BAUD matches %d, and that nothing else already has "
+            "the port (systemctl stop bilbo)."
+            % (cfg.MAVLINK_DEVICE, ", ".join(available), cfg.MAVLINK_BAUD))
 
+    # ---- LiDAR -------------------------------------------------------------
     try:
         lidar.init()
-    except Exception:
-        _log.exception("PREFLIGHT FAIL: LiDAR could not be opened")
-        return False
+    except Exception as exc:
+        return _fail(
+            "LIDAR",
+            "could not open %s (%r). 'device or resource busy' means another "
+            "process holds it -- the service is probably already running "
+            "(systemctl stop bilbo). Otherwise check the serial console is "
+            "disabled on that UART." % (cfg.LIDAR_DEVICE, exc),
+            exc_info=True)
 
     valid = {"n": 0}
 
@@ -351,34 +405,57 @@ def preflight():
         return valid["n"] >= cfg.LIDAR_HEALTH_FRAMES
 
     if not _wait_for(lidar_healthy, timeout=3.0):
-        _log.error("PREFLIGHT FAIL: LiDAR gave %d/%d valid frames (%s)",
-                   valid["n"], cfg.LIDAR_HEALTH_FRAMES, lidar.health())
-        return False
+        return _fail(
+            "LIDAR",
+            "port opened but only %d of %d valid frames arrived in 3 s "
+            "(counters: %s). Check wiring and that the baud is %d. A high "
+            "bad_checksum count means electrical noise; a high rejected count "
+            "means it is aimed at something out of range."
+            % (valid["n"], cfg.LIDAR_HEALTH_FRAMES, lidar.health(),
+               cfg.LIDAR_BAUD))
 
+    # ---- camera ------------------------------------------------------------
     try:
         width, height = camera.intitalise()
-    except Exception:
-        _log.exception("PREFLIGHT FAIL: camera did not start")
-        return False
+    except Exception as exc:
+        return _fail(
+            "CAMERA",
+            "failed to start (%r). Check the IMX500 ribbon, that "
+            "imx500-all is installed so the .rpk model exists, and that "
+            "nothing else has the camera open." % (exc,),
+            exc_info=True)
 
     if not _wait_for(camera.inference_alive, timeout=8.0):
-        _log.error("PREFLIGHT FAIL: no inference output from the IMX500")
-        return False
+        return _fail(
+            "CAMERA",
+            "started at %dx%d but produced no inference output in 8 s "
+            "(health: %s). The sensor firmware may still be loading, or the "
+            "model path is wrong." % (width, height, camera.health()))
 
     try:
         tracker.configure(width, height)
-    except Exception:
-        _log.exception("PREFLIGHT FAIL: camera geometry mismatch")
-        return False
+    except Exception as exc:
+        return _fail(
+            "GEOMETRY",
+            "camera is %dx%d but config expects %dx%d (%r). Update "
+            "IMAGE_WIDTH_PX / IMAGE_HEIGHT_PX -- PIXELS_PER_DEGREE and the "
+            "LiDAR boresight row both depend on them."
+            % (width, height, cfg.IMAGE_WIDTH_PX, cfg.IMAGE_HEIGHT_PX, exc),
+            exc_info=True)
 
+    # ---- RC ----------------------------------------------------------------
     if not _wait_for(
         lambda: drone.get_channel(cfg.CH_ENABLE) is not None,
         timeout=5.0,
         pump=drone.poll,
     ):
-        _log.error("PREFLIGHT FAIL: no RC_CHANNELS stream -- ch%d unreadable, "
-                   "so autonomy could never be enabled", cfg.CH_ENABLE)
-        return False
+        seen = sorted(drone.get_rc_channels()) or "none"
+        return _fail(
+            "RC",
+            "ch%d is unreadable, so autonomy could never be enabled. Channels "
+            "seen: %s. Either RC_CHANNELS is not streaming on this port (set "
+            "MAV2_RC_CHAN) or the transmitter is off / no switch is mapped to "
+            "ch%d." % (cfg.CH_ENABLE, seen, cfg.CH_ENABLE))
 
     _log.info("preflight OK (lidar %s, camera %s)",
               lidar.health(), camera.health())
@@ -751,8 +828,17 @@ def main():
     signal.signal(signal.SIGTERM, _on_signal)
 
     if not preflight():
-        # No READY indication, and a distinct colour so the failure is visible
-        # on the airframe rather than only in the log.
+        # Unmissable, on stderr, regardless of any logging configuration. An
+        # exit code of 1 with no visible reason is not an acceptable way for a
+        # flight program to give up.
+        banner = "=" * 68
+        sys.stderr.write(
+            "\n%s\nBILBO PREFLIGHT FAILED -- NOT STARTING\n  %s\n"
+            "\nFull log: %s\n%s\n\n"
+            % (banner, preflight_failure or "reason not recorded",
+               os.path.join(cfg.LOG_DIR, "bilbo.log"), banner))
+        sys.stderr.flush()
+        # Distinct colour so the failure is visible on the airframe too.
         led.led_status("solid", "orange")
         time.sleep(5.0)
         led.shutdown()
