@@ -52,9 +52,15 @@ fi
 # Find an interpreter that can actually import the flight dependencies.
 PYTHON=""
 for candidate in \
+
+    "${REPO}/detectors/venv/bin/python" \
+
     "${HOME_DIR}/bilbo-venv/bin/python" \
+
     "${REPO}/.venv/bin/python" \
+
     "${HOME_DIR}/.virtualenvs/bilbo/bin/python" \
+
     "$(command -v python3 || true)"
 do
     [[ -x "$candidate" ]] || continue

@@ -338,6 +338,33 @@ bounding box, more reliable IMX500 output), but 2 m is close to a person with
 props turning, and the safety floor is only 50 cm below the standoff. Brief the
 person you are tracking, and keep the first flights over open ground.
 
+## 7b. Launch when the service is enabled
+
+With `systemctl enable bilbo` set, the flight program is **already running from
+boot**. Do NOT also start it by hand — the second copy collides over the LiDAR
+port (opened `exclusive=True`) and the Pixhawk link.
+
+```
+1. Power on. Wait ~30 s. Confirm the strip reaches SOLID WHITE.
+2. ch7  -> bottom (LOITER)     escape destination
+3. ch9  DOWN, ch8 DOWN
+4. ch10 -> ARM
+5. ch9  -> UP                  GUIDED + AI: climbs to 2.2 m, then tracks
+```
+
+No terminal needed. If the strip never reaches solid white, preflight failed —
+`journalctl -u bilbo -n 50` names the sensor.
+
+To run any bench tool, stop the service first and restart it after:
+
+```bash
+sudo systemctl stop bilbo
+python tools/preflight_report.py --no-camera
+sudo systemctl start bilbo
+```
+
+---
+
 ## 8. Autostart on boot
 
 ```bash
