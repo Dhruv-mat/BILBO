@@ -1,22 +1,20 @@
 
 ## Overview
 
-This is a custom drone I’ve been working on where I designed pretty much the entire frame from scratch instead of using a standard one.
+This is a custom quadcopter I’ve been building from scratch, with most of the frame and mounting system designed by me rather than using a standard drone frame.
 
-The idea was to build something that can actually handle onboard compute and not just be a basic RC drone. Initially I was planning to use a Raspberry Pi + OAK-D Lite for perception since it kind of does everything in one go, but that didn’t really work out because of availability and cost, so I had to change things a bit.
+The main idea was to build a drone that could actually carry and run onboard compute, instead of just being a normal RC quad with a flight controller. I wanted to be able to put a Raspberry Pi, cameras, sensors, and eventually some kind of autonomous control system directly on the drone.
 
-Right now the plan is to use a RPI + RPI AI HAT with a normal RGB camera for detection and a TF-Luna LiDAR for distance. It’s definitely not as clean as the OAK-D setup, and I’m not 100% sure how well it’ll perform yet, but it should be good enough if I can get the software side working properly.
+The original plan was to use a Raspberry Pi with an OAK-D Lite for perception. That would have made things a lot simpler since the OAK-D basically gives you RGB, depth, and AI processing in one package. Unfortunately, getting one at a reasonable price turned out to be annoying, so I ended up changing the setup.
 
-A lot of time went into redesigning parts that didn’t work. Especially the motor mounts and arm connectors, some of the earlier versions looked fine in CAD but realistically would’ve probably failed.
+The current plan is a Raspberry Pi with an AI HAT and a normal RGB camera for person detection, combined with a TF-Luna LiDAR for measuring distance. It’s definitely a less elegant solution than the OAK-D, and I have no idea yet how well the whole thing is going to work in practice, but that’s kind of the point of the project.
 
-The frame uses carbon fiber rods for the arms and landing gear, and 3D printed connectors to hold everything together. It’s way stronger than just printing everything, and also makes it easier to tweak later.
+The frame itself has gone through quite a few iterations. A lot of the parts that looked completely fine in CAD turned out to be questionable once I actually thought about how they’d behave under load. The motor mounts and arm connectors especially went through multiple redesigns because some of the early versions were basically asking to snap.
 
-Right now the hardware design is mostly done in CAD, next step is printing and actually seeing if it works the way I think it will.
+The main structure uses carbon fiber rods for the arms and landing gear, with custom 3D printed connectors holding everything together. This gives me a decent balance between strength, weight, and being able to easily redesign individual parts without having to remake the entire frame.
 
-Right now the hardware design is mostly done in CAD, and next step is printing + assembling + testing.
+Most of the mechanical design is being done in Fusion 360. At this point, the hardware is mostly designed, so the next step is to actually print everything, assemble the drone, and find out which parts of my CAD model were complete bullshit.
 
-This new idea of the the RGB camera + a lidar sensor was inspired by this video:
-https://youtu.be/Nrzs3dQ9exw?si=6kdqJGR1x-Q6_Brh
 
 <img width="1920" height="1080" alt="Untitledd" src="https://github.com/user-attachments/assets/bf2fa519-02d8-4d9d-a449-6fe57590ec33" />
 
